@@ -14,3 +14,8 @@ dist/
 /tmp/
 .cache/
 analysis/tests/.cache/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
