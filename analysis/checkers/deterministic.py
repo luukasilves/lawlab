@@ -26,6 +26,20 @@ _SUBPOINT_RE = re.compile(r"(?m)^\s*(\d+)\)\s")
 _PCT_FIRST_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:protsenti|protsent|%)")
 
 
+def _point_numbers(point: str) -> List[str]:
+    out: List[str] = []
+    for part in re.split(r"\s*,\s*", point):
+        bounds = re.split(r"\s*[–—]\s*", part)
+        if len(bounds) == 2 and all(b.isdigit() for b in bounds):
+            lo, hi = int(bounds[0]), int(bounds[1])
+            if lo <= hi:
+                out.extend(str(n) for n in range(lo, hi + 1))
+                continue
+        if part.isdigit():
+            out.append(part)
+    return out or [point]
+
+
 def _quote(src: str, start: int, end: int, cap: int = 220) -> str:
     s = src[start:end].strip()
     s = re.sub(r"\s+", " ", s)
@@ -44,9 +58,24 @@ def _finding(category, severity, title, description, pid, location,
 
 
 def check_section_numbering(bill: Bill) -> List[Finding]:
-    # Only gap detection: the parser's monotonic section selector already drops
-    # non-increasing duplicates, so a duplicate-§ branch would be unreachable.
     out: List[Finding] = []
+
+    raw_seen = {}
+    for occ in getattr(bill, "raw_section_matches", []):
+        if occ.number.isdigit():
+            raw_seen.setdefault(int(occ.number), []).append(occ)
+    for n, items in raw_seen.items():
+        for occ in items[1:]:
+            out.append(_finding(
+                "structural_integrity", "MEDIUM",
+                f"Korduv paragrahvi number § {n}",
+                f"Paragrahvi number § {n} esineb eelnõus mitu korda.",
+                f"§{n}", f"§ {n}", bill.raw_text, occ.start, min(occ.end, len(bill.raw_text)),
+                reasoning="Korduv paragrahvinumber teeb sätete järjekorra ja viited ebaselgeks.",
+                suggestion="Nummerda paragrahvid üheselt.",
+                check_id="section_numbering",
+            ))
+
     nums = [int(s.number) for s in bill.sections]
     seen = {int(s.number): s for s in bill.sections}
     if nums:
@@ -69,6 +98,23 @@ def check_section_numbering(bill: Bill) -> List[Finding]:
 def check_instruction_numbering(bill: Bill) -> List[Finding]:
     out: List[Finding] = []
     for s in bill.sections:
+        raw_seen = {}
+        for occ in getattr(s, "raw_instruction_numbers", []):
+            if occ.number.isdigit():
+                raw_seen.setdefault(int(occ.number), []).append(occ)
+        for n, items in raw_seen.items():
+            for occ in items[1:]:
+                out.append(_finding(
+                    "structural_integrity", "MEDIUM",
+                    f"Korduv muutmispunkti number {n}) {s.pid}",
+                    f"Muutmiskäsu number {n}) esineb paragrahvis {s.pid} mitu korda.",
+                    s.pid, f"{s.pid} p {n}", bill.raw_text, occ.start,
+                    min(occ.start + 60, len(bill.raw_text)),
+                    reasoning="Korduv punktinumber teeb muudatuste järjekorra ebaselgeks.",
+                    suggestion="Nummerda muutmispunktid järjestikku.",
+                    check_id="instruction_numbering",
+                ))
+
         instr_nums = [int(i.number) for i in s.instructions if i.number.isdigit()]
         if len(instr_nums) < 2:
             continue
@@ -76,18 +122,6 @@ def check_instruction_numbering(bill: Bill) -> List[Finding]:
         for i in s.instructions:
             if i.number.isdigit():
                 seen.setdefault(int(i.number), []).append(i)
-        for n, items in seen.items():
-            if len(items) > 1:
-                it = items[1]
-                out.append(_finding(
-                    "structural_integrity", "MEDIUM",
-                    f"Korduv muutmispunkti number {n}) {s.pid}",
-                    f"Muutmiskäsu number {n}) esineb paragrahvis {s.pid} mitu korda.",
-                    s.pid, f"{s.pid} p {n}", bill.raw_text, it.start, it.start + 60,
-                    reasoning="Korduv punktinumber teeb muudatuste järjekorra ebaselgeks.",
-                    suggestion="Nummerda muutmispunktid järjestikku.",
-                    check_id="instruction_numbering",
-                ))
         lo, hi = min(instr_nums), max(instr_nums)
         for expected in range(lo, hi + 1):
             if expected not in seen:
@@ -132,19 +166,20 @@ def check_entry_into_force_refs(bill: Bill) -> List[Finding]:
                     continue
                 if ref.point and target.kind == "amendment":
                     instr_nums = {i.number for i in target.instructions if i.number.isdigit()}
-                    if ref.point not in instr_nums:
-                        out.append(_finding(
-                            "reference_integrity", "HIGH",
-                            f"Jõustumissäte viitab olematule punktile "
-                            f"§ {ref.paragraph} p {ref.point}",
-                            f"Jõustumissäte viitab muutmispunktile {ref.point}) "
-                            f"paragrahvis § {ref.paragraph}, mida seal ei ole.",
-                            s.pid, f"{s.pid} → § {ref.paragraph} p {ref.point}",
-                            bill.raw_text, ref.start, ref.end,
-                            reasoning="Vale punktiviide jätab osa muudatusi jõustumistähtajata.",
-                            suggestion="Kontrolli ja paranda punkti number.",
-                            check_id="eif_refs",
-                        ))
+                    for point in _point_numbers(ref.point):
+                        if point not in instr_nums:
+                            out.append(_finding(
+                                "reference_integrity", "HIGH",
+                                f"Jõustumissäte viitab olematule punktile "
+                                f"§ {ref.paragraph} p {point}",
+                                f"Jõustumissäte viitab muutmispunktile {point}) "
+                                f"paragrahvis § {ref.paragraph}, mida seal ei ole.",
+                                s.pid, f"{s.pid} → § {ref.paragraph} p {point}",
+                                bill.raw_text, ref.start, ref.end,
+                                reasoning="Vale punktiviide jätab osa muudatusi jõustumistähtajata.",
+                                suggestion="Kontrolli ja paranda punkti number.",
+                                check_id="eif_refs",
+                            ))
     return out
 
 
@@ -154,45 +189,51 @@ def check_percentage_allocations(bill: Bill) -> List[Finding]:
     so genuine partial splits (`millest …`) and rate lists are not false-flagged."""
     out: List[Finding] = []
     src = bill.raw_text
+
+    def scan_block(s: Section, block: str, anchor: int) -> None:
+        # split into sibling sub-points "N) ..."
+        subs = list(_SUBPOINT_RE.finditer(block))
+        if len(subs) < 2:
+            return
+        vals = []
+        for j, sm in enumerate(subs):
+            seg_start = sm.end()
+            seg_end = subs[j + 1].start() if j + 1 < len(subs) else len(block)
+            pm = _PCT_FIRST_RE.search(block, seg_start, seg_end)
+            if pm:
+                vals.append(float(pm.group(1).replace(",", ".")))
+        if len(vals) < 2:
+            return
+        total = round(sum(vals), 2)
+        if 90.0 < total < 110.0 and abs(total - 100.0) > 0.05:
+            out.append(_finding(
+                "arithmetic", "MEDIUM",
+                f"Protsendijaotus ei summeeru 100-le ({total}%)",
+                f"Paralleelsete punktide protsendid summeeruvad {total}%, "
+                f"mitte 100%: {vals}.",
+                s.pid, s.pid, src, anchor, min(anchor + 200, len(src)),
+                reasoning="Kui jaotus peaks olema ammendav, jääb osa vahenditest "
+                          "jaotamata või on protsent valesti arvutatud.",
+                suggestion="Kontrolli, kas protsendid peaksid kokku andma 100.",
+                check_id="percentage_alloc",
+            ))
+
     for s in bill.sections:
-        for instr in s.instructions:
-            for q in instr.quote_spans:
-                block = src[q.start:q.end]
-                # split into sibling sub-points "N) ..."
-                subs = list(_SUBPOINT_RE.finditer(block))
-                if len(subs) < 2:
-                    continue
-                vals = []
-                for j, sm in enumerate(subs):
-                    seg_start = sm.end()
-                    seg_end = subs[j + 1].start() if j + 1 < len(subs) else len(block)
-                    pm = _PCT_FIRST_RE.search(block, seg_start, seg_end)
-                    if pm:
-                        vals.append(float(pm.group(1).replace(",", ".")))
-                if len(vals) < 2:
-                    continue
-                total = round(sum(vals), 2)
-                if 90.0 < total < 110.0 and abs(total - 100.0) > 0.05:
-                    out.append(_finding(
-                        "arithmetic", "MEDIUM",
-                        f"Protsendijaotus ei summeeru 100-le ({total}%)",
-                        f"Paralleelsete punktide protsendid summeeruvad {total}%, "
-                        f"mitte 100%: {vals}.",
-                        s.pid, s.pid, src, q.start, q.start + 200,
-                        reasoning="Kui jaotus peaks olema ammendav, jääb osa vahenditest "
-                                  "jaotamata või on protsent valesti arvutatud.",
-                        suggestion="Kontrolli, kas protsendid peaksid kokku andma 100.",
-                        check_id="percentage_alloc",
-                    ))
+        quote_spans = [q for instr in s.instructions for q in instr.quote_spans]
+        if quote_spans:
+            for q in quote_spans:
+                scan_block(s, src[q.start:q.end], q.start)
+            continue
+
+        body_start = src.find("\n", s.start, s.end)
+        body_start = body_start + 1 if body_start != -1 else s.end
+        scan_block(s, src[body_start:s.end], body_start)
     return out
 
 
-# NOTE: check_instruction_numbering is intentionally NOT in the active set.
-# The parser now keeps only the strictly-increasing top-level instruction run,
-# so apparent "duplicate"/"gap" instruction numbers were nested quoted lists —
-# false positives. Kept as a function for possible future use on structured XML.
 _ALL = [
     check_section_numbering,
+    check_instruction_numbering,
     check_entry_into_force_refs,
     check_percentage_allocations,
 ]

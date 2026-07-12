@@ -16,14 +16,15 @@ import argparse
 import hashlib
 import json
 import os
-import re
 import sys
 from typing import List
 
 import config
+import requests
 from .parser.structure import parse_bill
 from .checkers.deterministic import run_deterministic, CHECKER_VERSION
 from .aggregate import run_self_consistency, _spans_overlap
+from .llm.client import LLMError
 from .models import Finding, AnalysisResult, CATEGORIES
 from .prompts.internal_consistency import PROMPT_VERSION
 
@@ -31,8 +32,10 @@ CACHE_DIR = os.path.join(os.path.dirname(__file__), ".cache")
 
 
 def cache_key(text: str, model: str, n: int, k: int, temp: float) -> str:
-    norm = re.sub(r"\s+", " ", text).strip()
-    blob = f"{norm}|{PROMPT_VERSION}|{model}|{CHECKER_VERSION}|n={n}|k={k}|t={temp}"
+    blob = (
+        f"{text}|provider={config.LLM_PROVIDER}|{PROMPT_VERSION}|{model}|"
+        f"{CHECKER_VERSION}|n={n}|k={k}|t={temp}"
+    )
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:32]
 
 
@@ -64,7 +67,11 @@ def analyze(text: str, use_llm: bool, n: int, k: int, temp: float, use_cache: bo
             stable = _dedup_llm_against_deterministic(findings, stable)
             findings.extend(stable)
             stats["llm"] = llm_stats
-        except Exception as e:          # API/limit errors must not lose deterministic output
+        except (
+            LLMError,
+            requests.RequestException,
+        ) as e:
+            # API/limit errors must not lose deterministic output.
             stats["llm_error"] = str(e)[:200]
 
     result = AnalysisResult(

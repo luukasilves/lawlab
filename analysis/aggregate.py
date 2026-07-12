@@ -33,16 +33,18 @@ def _title_similar(a: Finding, b: Finding) -> bool:
 
 
 def _matches(f: Finding, cluster: List[Tuple[int, Finding]]) -> bool:
-    """A finding joins a cluster if it shares category AND (overlaps a member's
-    span, or targets the same provision with a similar title)."""
+    """A finding joins a cluster if it matches every current member."""
+    if not cluster:
+        return False
     for _, member in cluster:
         if f.category != member.category:
-            continue
-        if _spans_overlap(f, member):
-            return True
-        if f.provision_id and f.provision_id == member.provision_id and _title_similar(f, member):
-            return True
-    return False
+            return False
+        if not (
+            _spans_overlap(f, member)
+            or (f.provision_id and f.provision_id == member.provision_id and _title_similar(f, member))
+        ):
+            return False
+    return True
 
 
 def cluster_llm_samples(samples: List[List[Finding]], n_runs: int, k: int) -> List[Finding]:

@@ -43,6 +43,13 @@ class Span:
 
 
 @dataclass
+class NumberedMatch:
+    number: str
+    start: int
+    end: int
+
+
+@dataclass
 class Reference:
     """A reference like 'paragrahvi 2 lõike 5 punktis 31' or '§ 1 lõike 1 punktis 5'."""
     raw: str
@@ -75,6 +82,7 @@ class Section:
     start: int
     end: int
     instructions: List[Instruction] = field(default_factory=list)
+    raw_instruction_numbers: List[NumberedMatch] = field(default_factory=list)
 
 
 @dataclass
@@ -82,6 +90,7 @@ class Bill:
     title: str
     raw_text: str
     sections: List[Section] = field(default_factory=list)
+    raw_section_matches: List[NumberedMatch] = field(default_factory=list)
 
     def summary(self) -> Dict[str, Any]:
         return {
@@ -112,16 +121,34 @@ _INSTR_RE = re.compile(r"(?m)^(\d+)\)\s")
 # Reference forms. We capture the leading paragraph token, then optionally a
 # lõige and a punkt with their (opaque) numbers. Handles both "paragrahvi N"
 # and "§ N" / "§-ga N" / "§-s N" lead-ins, in any Estonian case ending.
-_PARA_LEAD = r"(?:§\s*-?\s*\w*\s*|paragrahv\w*\s+)(\d+)"
+_PARA_LEAD = r"(?:§\s*(?:-?\s*[a-zõäöüšž]+)?\s*|paragrahv\w*\s+)(\d+)"
 _LOIGE = r"(?:\s+lõi\w+\s+(\d+))?"
-_PUNKT = r"(?:\s+punkt\w*\s+([\d–—,\s\w]*?\d))?"
+_PUNKT = r"(?:\s+punkt\w*\s+(\d+(?:\s*[–—,]\s*\d+)*))?"
 _REF_RE = re.compile(_PARA_LEAD + _LOIGE + _PUNKT)
 
 # A percentage token: "12 protsenti", "4,5 protsenti", "60,6 protsenti"
 _PCT_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:protsenti|protsent|%)")
 
 # Quoted normative block (best effort; non-greedy between curly double quotes)
-_QUOTE_RE = re.compile(r"”.*?”", re.DOTALL)
+_QUOTE_RE = re.compile(r"(?:”.*?”|„.*?[“”])", re.DOTALL)
+
+_SUPERSCRIPT_TRANSLATION = str.maketrans({
+    "⁰": "0",
+    "¹": "1",
+    "²": "2",
+    "³": "3",
+    "⁴": "4",
+    "⁵": "5",
+    "⁶": "6",
+    "⁷": "7",
+    "⁸": "8",
+    "⁹": "9",
+})
+
+
+def normalize_superscripts(text: str) -> str:
+    """Normalize Unicode superscript digits without changing text length."""
+    return text.translate(_SUPERSCRIPT_TRANSLATION)
 
 
 def _classify(title: str) -> str:
@@ -176,14 +203,22 @@ def _extract_references(src: str, start: int, end: int, self_law: Optional[str])
 # ── main parse ──────────────────────────────────────────────────────────────
 
 def _quote_mask(s: str) -> List[bool]:
-    """Mark chars that sit inside a ”…” quote, by toggling on each curly quote.
-    Robust for the common (non-nested) case; nested same-char quotes (rare) may
-    mis-toggle, which only affects instruction counting in those few sections."""
+    """Mark chars inside curly-quoted text while preserving one char per input."""
     mask = [False] * len(s)
     inside = False
+    opener = ""
     for i, ch in enumerate(s):
-        if ch == "”":
+        if ch == "„" and not inside:
+            inside = True
+            opener = ch
+            mask[i] = True
+        elif ch in ("“", "”") and inside and opener == "„":
+            inside = False
+            opener = ""
+            mask[i] = True
+        elif ch == "”":
             inside = not inside
+            opener = ch if inside else ""
             mask[i] = True
         else:
             mask[i] = inside
@@ -191,14 +226,28 @@ def _quote_mask(s: str) -> List[bool]:
 
 
 _META_KEYWORDS = ("juhtivkomisjon", "eelnõu", "lugemine", "esitab", "riigikogu")
+_AMENDMENT_VERBS = (
+    "muudetakse", "täiendatakse", "asendatakse", "tunnistatakse",
+    "jäetakse", "loetakse", "sõnastatakse",
+)
+
+
+def _looks_like_amendment_command(src: str, start: int, end: int) -> bool:
+    line_end = src.find("\n", start, end)
+    if line_end == -1:
+        line_end = end
+    line = src[start:line_end].lower()
+    return any(verb in line for verb in _AMENDMENT_VERBS)
 
 
 def parse_bill(text: str) -> Bill:
+    src = normalize_superscripts(text)
+
     # Title: first non-empty line that looks like a law title, skipping the
     # metadata header (committee, reading, date, "NNN SE", "EELNÕU").
     title = ""
     fallback = ""
-    for line in text.splitlines():
+    for line in src.splitlines():
         s = line.strip()
         if not s:
             continue
@@ -213,7 +262,9 @@ def parse_bill(text: str) -> Bill:
             break
     title = title or fallback
 
-    matches = list(_SECTION_RE.finditer(text))
+    full_mask = _quote_mask(src)
+    matches = [m for m in _SECTION_RE.finditer(src) if not full_mask[m.start()]]
+    raw_section_matches = [NumberedMatch(m.group(1), m.start(), m.end()) for m in matches]
 
     # Keep only near-sequential top-level §s (drop inserted "§ 10¹"→"101" etc.).
     kept = []
@@ -231,7 +282,7 @@ def parse_bill(text: str) -> Bill:
     sections: List[Section] = []
     for idx, m in enumerate(kept):
         sec_start = m.start()
-        sec_end = kept[idx + 1].start() if idx + 1 < len(kept) else len(text)
+        sec_end = kept[idx + 1].start() if idx + 1 < len(kept) else len(src)
         number = m.group(1)
         sec_title = m.group(2).strip()
         kind = _classify(sec_title)
@@ -244,39 +295,55 @@ def parse_bill(text: str) -> Bill:
 
         # amendment instructions inside the section body. Two filters, because
         # quoted replacement text contains the target law's own "N)" lists:
-        #   1) drop "N)" inside ”…” quotes (best-effort mask), then
-        #   2) keep only the strictly increasing top-level run (1→2→3…); nested
-        #      lists restart at lower numbers and are thereby excluded. This is
-        #      robust even when quote-parity masking fails on long documents.
+        #   1) drop "N)" inside curly quotes (best-effort mask), then
+        #   2) start at 1) and keep forward jumps; nested lists restart at lower
+        #      numbers and are thereby excluded.
         body_start = m.end()
-        mask = _quote_mask(text[body_start:sec_end])
-        candidates = [im for im in _INSTR_RE.finditer(text, body_start, sec_end)
-                      if not mask[im.start() - body_start]]
+        candidates = []
+        for im in _INSTR_RE.finditer(src, body_start, sec_end):
+            if not full_mask[im.start()]:
+                candidates.append(im)
+                continue
+            if candidates:
+                prev = int(candidates[-1].group(1))
+                n = int(im.group(1))
+                # Real drafts sometimes leave a replacement block quote unclosed;
+                # recover only the next amendment-command heading.
+                if n == prev + 1 and _looks_like_amendment_command(src, im.start(), sec_end):
+                    candidates.append(im)
+        sec.raw_instruction_numbers = [
+            NumberedMatch(im.group(1), im.start(), im.end()) for im in candidates
+        ]
         instr_iter = []
         last = 0
         for im in candidates:
             n = int(im.group(1))
-            if n == last + 1:
+            if not instr_iter:
+                if n == 1:
+                    instr_iter.append(im); last = n
+                continue
+            if n > last:
                 instr_iter.append(im); last = n
         for j, im in enumerate(instr_iter):
             i_start = im.start()
             i_end = instr_iter[j + 1].start() if j + 1 < len(instr_iter) else sec_end
             instr = Instruction(number=im.group(1), start=i_start, end=i_end)
-            instr.references = _extract_references(text, i_start, i_end, law)
+            instr.references = _extract_references(src, i_start, i_end, law)
             instr.quote_spans = [Span(i_start + q.start(), i_start + q.end())
-                                 for q in _QUOTE_RE.finditer(text[i_start:i_end])]
+                                 for q in _QUOTE_RE.finditer(src[i_start:i_end])]
             sec.instructions.append(instr)
 
         # For entry-into-force / substantive sections with no "N)" instructions,
         # still capture references at the section level under a synthetic instr.
         if not sec.instructions:
             synth = Instruction(number="", start=body_start, end=sec_end)
-            synth.references = _extract_references(text, body_start, sec_end, law)
+            synth.references = _extract_references(src, body_start, sec_end, law)
             sec.instructions.append(synth)
 
         sections.append(sec)
 
-    return Bill(title=title, raw_text=text, sections=sections)
+    return Bill(title=title, raw_text=text, sections=sections,
+                raw_section_matches=raw_section_matches)
 
 
 def percentages_in(src: str, start: int, end: int) -> List[float]:
