@@ -1086,6 +1086,7 @@ async function autoInit() {
     const samplesMeta = analysisId ? await fetchSamplesMeta(analysisId).catch(() => []) : [];
     await init({ analysis, bill, document: doc, history, parsedText, samplesMeta });
   } catch (error) {
+    console.error("bill page init failed:", error);
     const app = byId("billApp");
     if (app) {
       clear(app);

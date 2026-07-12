@@ -1,11 +1,13 @@
-// Cloudflare Workers static-assets deploy for the Apsakaleidja viewer.
-// Assets-only Worker (no script): serves web/ at https://lawlab.<account>.workers.dev
-// Deploy: npx wrangler deploy   (requires wrangler login or CLOUDFLARE_API_TOKEN)
+// Cloudflare Workers deploy for the Apsakaleidja viewer: static assets from
+// web/ plus a tiny router worker for pretty URLs (/bill/<uuid>, /metoodika).
+// Deploy: npx wrangler deploy
 {
   "name": "lawlab",
+  "main": "worker.js",
   "compatibility_date": "2026-07-01",
   "assets": {
     "directory": "./web",
-    "not_found_handling": "404-page"
+    "binding": "ASSETS",
+    "html_handling": "none"
   }
 }

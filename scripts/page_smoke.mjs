@@ -51,6 +51,12 @@ try {
   await send("Page.enable");
   await sleep(waitMs);
 
+  const extra = process.env.SMOKE_EXPR;
+  if (extra) {
+    const res = await send("Runtime.evaluate", { expression: extra, returnByValue: true, awaitPromise: true });
+    console.log("===EXPR===");
+    console.log(JSON.stringify(res.result?.value ?? res, null, 1));
+  }
   const html = await send("Runtime.evaluate", { expression: "document.documentElement.outerHTML", returnByValue: true });
   console.log("===CONSOLE===");
   for (const l of consoleLines) console.log(l);

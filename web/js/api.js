@@ -66,8 +66,17 @@ export function fetchLatestIngest() {
   return api('/rest/v1/pipeline_runs?kind=eq.ingest&ok=eq.true&select=finished_at,stats&order=finished_at.desc&limit=1');
 }
 
+// PostgREST always returns arrays; singular fetchers unwrap the first row.
+async function first(promise) {
+  const rows = await promise;
+  return Array.isArray(rows) ? (rows[0] ?? null) : rows;
+}
+
 export function fetchBill(billId) {
-  return api(`/rest/v1/bills?id=eq.${encodeURIComponent(billId)}&select=*`);
+  return first(api(
+    `/rest/v1/bills?id=eq.${encodeURIComponent(billId)}` +
+    `&select=*,bill_documents(id,document_type,version,fetched_at,text_length,extraction_method)`
+  ));
 }
 
 export function fetchHistory(billId) {
@@ -75,11 +84,11 @@ export function fetchHistory(billId) {
 }
 
 export function fetchAnalysisWithFindings(analysisId) {
-  return api(`/rest/v1/analyses?id=eq.${encodeURIComponent(analysisId)}&select=*,findings(*)`);
+  return first(api(`/rest/v1/analyses?id=eq.${encodeURIComponent(analysisId)}&select=*,findings(*)`));
 }
 
 export function fetchParsedText(documentId) {
-  return api(`/rest/v1/bill_documents?id=eq.${encodeURIComponent(documentId)}&select=parsed_text`);
+  return first(api(`/rest/v1/bill_documents?id=eq.${encodeURIComponent(documentId)}&select=parsed_text`));
 }
 
 export function fetchSamplesMeta(analysisId) {
@@ -87,7 +96,7 @@ export function fetchSamplesMeta(analysisId) {
 }
 
 export function fetchSampleRaw(sampleId) {
-  return api(`/rest/v1/analysis_samples?id=eq.${encodeURIComponent(sampleId)}&select=raw_output,parsed`);
+  return first(api(`/rest/v1/analysis_samples?id=eq.${encodeURIComponent(sampleId)}&select=raw_output,parsed`));
 }
 
 export function postFeedback(findingId, verdict) {
