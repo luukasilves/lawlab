@@ -182,6 +182,17 @@ def test_refute_marks_in_place():
     print("✓ refuted finding stays, marked in place; SampleRecord carries usage")
 
 
+def test_refute_blocks_match_template():
+    """The split blocks must concatenate to EXACTLY build_user_message's text
+    (the published prompt), with the cache breakpoint on the shared bill prefix."""
+    from ..prompts import refutation
+    blocks = refutation.build_user_blocks("SEADUSTEKST siin", '{"title": "x"}')
+    joined = "".join(b["text"] for b in blocks)
+    assert joined == refutation.build_user_message("SEADUSTEKST siin", '{"title": "x"}')
+    assert "cache_control" in blocks[0] and "cache_control" not in blocks[1]
+    print("✓ refute blocks == published template text; breakpoint on shared prefix")
+
+
 def test_refute_upholds():
     orig = refute.chat_json
     refute.chat_json = lambda *a, **k: LLMResponse(
@@ -203,5 +214,6 @@ if __name__ == "__main__":
     test_payload_has_cache_control_and_usage()
     test_verify_model()
     test_refute_marks_in_place()
+    test_refute_blocks_match_template()
     test_refute_upholds()
     print("\nALL LLM-LAYER TESTS PASSED")

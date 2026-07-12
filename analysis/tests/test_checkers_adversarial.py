@@ -118,6 +118,29 @@ def test_percentage_outside_quotes():
     print("✓ percentages: unquoted sibling list 45+30+23=98% flagged")
 
 
+def test_substantive_lists_not_duplicates():
+    """Substantive laws restart 1) 2) sub-lists under every lõige — the
+    instruction-numbering check must not read them as duplicates (live FP
+    on bill 652, Krediiditeabe jagamise seadus)."""
+    src = (
+        "Krediiditeabe jagamise seadus\n\n"
+        "§ 1. Lepingu lõpetamine\n"
+        "(1) Leping lõpetatakse, kui:\n"
+        "1) registripidaja rikub oma kohustusi;\n"
+        "2) registripidaja ei täida kõrvaltingimusi.\n"
+        "(2) Leping lõpeb ka juhul, kui:\n"
+        "1) registripidaja esitab avalduse;\n"
+        "2) registripidaja tegevus lõpetatakse.\n\n"
+        "§ 2. Seaduse jõustumine\n"
+        "Käesolev seadus jõustub üldises korras.\n"
+    )
+    bill = parse_bill(src)
+    findings = run_deterministic(bill)
+    instr = _by_check(findings, "instruction_numbering")
+    assert instr == [], f"substantive lõige-lists false-flagged: {[f.title for f in instr]}"
+    print("✓ substantive sub-lists no longer read as duplicate instructions")
+
+
 def test_quoted_percentage_regression():
     """The original quoted-98% planted error must STILL be caught after the refactor."""
     bill = parse_bill(_load("synthetic_errors.txt"))
@@ -133,5 +156,6 @@ if __name__ == "__main__":
     test_gap_duplicates_and_quoted_decoy()
     test_superscript_normalization()
     test_percentage_outside_quotes()
+    test_substantive_lists_not_duplicates()
     test_quoted_percentage_regression()
     print("\nALL ADVERSARIAL CHECKER TESTS PASSED")

@@ -259,6 +259,26 @@ def test_run_pending_cap_and_isolation():
     print("✓ run_pending: cap enforced, per-doc isolation, pipeline run recorded")
 
 
+def test_degraded_llm_analysis_not_persisted():
+    """An analysis whose LLM stage soft-failed (stats.llm_error) must NOT be
+    persisted: its cache_key would block the retry forever (live bug on bill
+    652 — truncated JSON → llm_error → persisted as complete)."""
+    fs = FakeStore([{"id": "d9", "bill_id": "b9", "content_hash": "h9"}])
+
+    def degraded(text, **kw):
+        return ({"result": {"cache_key": "ck9", "llm_cache_key": "lk9", "model": "m",
+                            "provider": "p", "prompt_version": "v", "checker_version": "c",
+                            "engine": {}, "config": {}, "findings": []},
+                 "stats": {"deterministic": 3, "llm_error": "output truncated at max_tokens"},
+                 "samples": [], "usage": {"input_tokens": 0, "output_tokens": 0,
+                                          "cost_usd": 0.0, "duration_ms": 1}}, False)
+
+    stats = analyze_pending.run_pending(fs, analyze_fn=degraded, max_bills=5)
+    assert stats["failed"] == 1 and stats["analysed"] == 0, f"degraded run persisted: {stats}"
+    assert fs.analyses == [], "degraded analysis row must not be written"
+    print("✓ degraded (llm_error) analyses are not persisted — retry stays possible")
+
+
 def test_ingest_corpus_isolation_and_run_record():
     orig_iter, orig_extract, orig_sleep = riigikogu.iterate_corpus, riigikogu.extract_bill_text, time.sleep
     time.sleep = lambda *_: None
@@ -302,5 +322,6 @@ if __name__ == "__main__":
     test_next_version_and_doc_listing()
     test_insert_analysis_and_new_writers()
     test_run_pending_cap_and_isolation()
+    test_degraded_llm_analysis_not_persisted()
     test_ingest_corpus_isolation_and_run_record()
     print("\nALL INGESTION CONTRACT TESTS PASSED")

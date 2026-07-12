@@ -118,17 +118,25 @@ def run_self_consistency(bill_text: str, structure_hint: str, n: int, k: int,
 
     samples: List[List[Finding]] = [[] for _ in range(n)]
     records: List[SampleRecord] = [None] * n  # type: ignore[list-item]
-    with ThreadPoolExecutor(max_workers=min(n, 5)) as pool:
-        futures = [
-            pool.submit(engine.analyze_once, bill_text, structure_hint,
-                        temperature=temperature, model=model)
-            for _ in range(n)
-        ]
-        for sample_idx, future in enumerate(futures):
-            findings, record = future.result()
-            record.sample_idx = sample_idx
-            samples[sample_idx] = findings
-            records[sample_idx] = record
+    # Sample 0 runs alone so its request WRITES the prompt cache; the rest run
+    # in parallel as cache READS (all-parallel means nobody can hit the cache).
+    findings0, record0 = engine.analyze_once(bill_text, structure_hint,
+                                             temperature=temperature, model=model)
+    record0.sample_idx = 0
+    samples[0] = findings0
+    records[0] = record0
+    if n > 1:
+        with ThreadPoolExecutor(max_workers=min(n - 1, 5)) as pool:
+            futures = [
+                pool.submit(engine.analyze_once, bill_text, structure_hint,
+                            temperature=temperature, model=model)
+                for _ in range(n - 1)
+            ]
+            for sample_idx, future in enumerate(futures, start=1):
+                findings, record = future.result()
+                record.sample_idx = sample_idx
+                samples[sample_idx] = findings
+                records[sample_idx] = record
     stable, summaries = cluster_with_summaries(samples, n_runs=n, k=k)
     stats = {
         "samples": n, "min_agreement": k,

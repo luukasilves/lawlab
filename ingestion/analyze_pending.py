@@ -81,6 +81,10 @@ def run_pending(store, analyze_fn: Optional[Callable[..., Any]] = None,
 
                     out, _ = analyze_fn(text, use_llm=use_llm, n=n, k=k, temp=temp,
                                         use_cache=False, reused_samples=samples)
+                    if use_llm and out["stats"].get("llm_error"):
+                        # Never persist a degraded analysis: its cache_key would
+                        # block the retry forever (has_analysis skip).
+                        raise RuntimeError(f"llm degraded: {str(out['stats']['llm_error'])[:150]}")
                     usage = out["usage"]
                     aid = store.insert_analysis(doc["id"], {
                         **out["result"], "stats": out["stats"], **usage

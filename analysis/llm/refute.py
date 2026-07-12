@@ -64,7 +64,7 @@ def refute_findings(bill_text: str, candidates: List[Finding], model=None):
         try:
             response = chat_json(
                 refutation.SYSTEM_PROMPT,
-                refutation.build_user_message(bill_text, _finding_payload(finding)),
+                refutation.build_user_blocks(bill_text, _finding_payload(finding)),
                 temperature=0.0,
                 model=model,
             )

@@ -29,7 +29,7 @@ class LLMResponse:
 
 
 def chat_json(system: str, user: str, temperature: float,
-              max_tokens: int = 8000, model: str = None, timeout: int = 300) -> LLMResponse:
+              max_tokens: int = 16000, model: str = None, timeout: int = 300) -> LLMResponse:
     model = model or config.active_model()
     if config.LLM_PROVIDER == "anthropic":
         if not config.ANTHROPIC_API_KEY:
@@ -68,6 +68,15 @@ def _system_block(system: str):
     return [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
 
 
+def _user_blocks(user):
+    """Accept a plain string (one cached block) or pre-split content blocks —
+    callers place the cache_control breakpoint at the end of the SHARED prefix
+    (e.g. refutation: bill text cached, per-finding tail varies)."""
+    if isinstance(user, list):
+        return user
+    return [{"type": "text", "text": user, "cache_control": {"type": "ephemeral"}}]
+
+
 def _openrouter(system, user, temperature, max_tokens, model, timeout) -> LLMResponse:
     headers = {
         "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
@@ -80,7 +89,9 @@ def _openrouter(system, user, temperature, max_tokens, model, timeout) -> LLMRes
         "max_tokens": max_tokens,
         "messages": [
             {"role": "system", "content": _system_block(system)},
-            {"role": "user", "content": user},
+            # cache_control must cover system + bill text to clear Opus's
+            # 4096-token cache floor (the system prompt alone never does).
+            {"role": "user", "content": _user_blocks(user)},
         ],
         "response_format": {"type": "json_object"},
         "usage": {"include": True},
@@ -91,6 +102,9 @@ def _openrouter(system, user, temperature, max_tokens, model, timeout) -> LLMRes
     data = r.json()
     if "choices" not in data:
         raise LLMError(f"OpenRouter unexpected response: {str(data)[:300]}")
+    finish = data["choices"][0].get("finish_reason")
+    if finish == "length":
+        raise LLMError("output truncated at max_tokens (finish_reason=length)")
     usage = data.get("usage") or {}
     return LLMResponse(
         text=data["choices"][0]["message"]["content"],

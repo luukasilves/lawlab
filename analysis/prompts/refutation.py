@@ -9,3 +9,15 @@ USER_TEMPLATE = 'EELNÕU TEKST:\n{bill_text}\n\nKONTROLLITAV LEID:\n{finding_jso
 
 def build_user_message(bill_text: str, finding_json: str) -> str:
     return USER_TEMPLATE.format(bill_text=bill_text, finding_json=finding_json)
+
+
+def build_user_blocks(bill_text: str, finding_json: str):
+    """Same text as build_user_message, split so the cache breakpoint sits at
+    the end of the shared prefix (bill text) — the per-finding tail varies, and
+    a single block would never hit the prompt cache across skeptic calls."""
+    head, tail = USER_TEMPLATE.split("{finding_json}")
+    return [
+        {"type": "text", "text": head.format(bill_text=bill_text),
+         "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": finding_json + tail},
+    ]

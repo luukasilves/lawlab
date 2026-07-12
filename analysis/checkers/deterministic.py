@@ -110,6 +110,11 @@ def check_section_numbering(bill: Bill) -> List[Finding]:
 def check_instruction_numbering(bill: Bill) -> List[Finding]:
     out: List[Finding] = []
     for s in bill.sections:
+        # Amendment-bill concept only: substantive sections legitimately restart
+        # their 1) 2) 3) sub-lists under every lõige, which would read as
+        # duplicates here (live FP on bill 652, a substantive law).
+        if s.kind != "amendment":
+            continue
         raw_seen = {}
         for occ in getattr(s, "raw_instruction_numbers", []):
             if occ.number.isdigit():
