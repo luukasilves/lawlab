@@ -78,6 +78,7 @@ create table if not exists analysis_samples (
   input_tokens       int,
   output_tokens      int,
   cost_usd           numeric(10,4),
+  error              text,                   -- set when this sample failed (raw_output preserved)
   created_at         timestamptz default now(),
   unique (analysis_id, pass_id, sample_idx)
 );

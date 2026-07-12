@@ -26,6 +26,10 @@ _QUOTE_MAP = {ord(c): '"' for c in "”“„‟”“'’‘`´"}
 class LLMParseError(Exception):
     """Raised when the model response cannot be used as an issues payload."""
 
+    def __init__(self, message: str, raw: str = ""):
+        super().__init__(message)
+        self.raw = raw
+
 
 def _norm(s: str) -> str:
     return s.translate(_QUOTE_MAP)
@@ -66,9 +70,9 @@ def _snippet(content: str) -> str:
 
 def _validate_payload(data: object, content: str) -> dict:
     if not isinstance(data, dict):
-        raise LLMParseError(f"LLM response is not a JSON object: {_snippet(content)}")
+        raise LLMParseError(f"LLM response is not a JSON object: {_snippet(content)}", raw=content)
     if not isinstance(data.get("issues"), list):
-        raise LLMParseError(f"LLM response is missing a usable issues list: {_snippet(content)}")
+        raise LLMParseError(f"LLM response is missing a usable issues list: {_snippet(content)}", raw=content)
     return data
 
 
@@ -86,7 +90,7 @@ def _parse_json(content: str) -> dict:
                 return _validate_payload(json.loads(m.group()), m.group())
             except json.JSONDecodeError:
                 pass
-    raise LLMParseError(f"LLM response is not parseable JSON: {_snippet(content)}")
+    raise LLMParseError(f"LLM response is not parseable JSON: {_snippet(content)}", raw=content)
 
 
 def _coerce_category(c: str, *, with_relabel: bool = False):

@@ -111,6 +111,7 @@ class SampleRecord:
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
     cost_usd: float = 0.0
+    error: Optional[str] = None       # set when this sample failed (e.g. unparseable JSON)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

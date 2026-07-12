@@ -99,6 +99,56 @@ def test_parallel_sampling_and_records():
     print("✓ parallel sampling with ordered SampleRecords + cluster membership map")
 
 
+def test_bad_sample_isolated_not_fatal():
+    """One unparseable sample out of 4 must be recorded (raw preserved) and
+    excluded — clustering runs over the 3 usable samples with honest
+    runs_total=3. Below the k floor, the whole stage degrades instead."""
+    from ..llm.engine import LLMParseError
+    from ..llm.client import LLMError
+    calls = {"i": 0}
+
+    def flaky(bill_text, structure_hint="", temperature=0.4, model=None):
+        idx = calls["i"]; calls["i"] += 1
+        if idx == 1:
+            raise LLMParseError("LLM response is not parseable JSON: {bad", raw='{"issues": [ {bad')
+        rec = SampleRecord(
+            pass_id="interpretive", sample_idx=-1, temperature=temperature,
+            raw_output="{}", parsed=[_f().to_dict()], returned_count=1,
+            grounded_count=1, dropped_ungrounded=0,
+            duration_ms=5, input_tokens=100, output_tokens=10, cost_usd=0.001)
+        return [_f()], rec
+
+    orig = engine_mod.analyze_once
+    engine_mod.analyze_once = flaky
+    try:
+        stable, records, stats = run_self_consistency(BILL, "", n=4, k=3, temperature=0.4, model="m")
+        assert len(records) == 4 and sum(1 for r in records if r.error) == 1
+        failed = next(r for r in records if r.error)
+        assert failed.raw_output.startswith('{"issues"'), "raw output of the bad sample must be preserved"
+        assert stats["failed_samples"] == 1 and stats["usable_samples"] == 3
+        assert len(stable) == 1 and stable[0].runs_total == 3 and stable[0].runs_found == 3
+        # below the floor: 2 usable < k=3 must degrade the stage
+        calls["i"] = 0
+        def mostly_bad(bill_text, structure_hint="", temperature=0.4, model=None):
+            idx = calls["i"]; calls["i"] += 1
+            if idx in (1, 2):
+                raise LLMParseError("bad", raw="x")
+            rec = SampleRecord(pass_id="interpretive", sample_idx=-1, temperature=temperature,
+                               raw_output="{}", parsed=[], returned_count=0,
+                               grounded_count=0, dropped_ungrounded=0)
+            return [], rec
+        engine_mod.analyze_once = mostly_bad
+        try:
+            run_self_consistency(BILL, "", n=3, k=3, temperature=0.4, model="m")
+        except LLMError as e:
+            assert "below agreement floor" in str(e)
+        else:
+            raise AssertionError("usable<k did not degrade")
+    finally:
+        engine_mod.analyze_once = orig
+    print("✓ bad samples isolated with raw preserved; floor degrades honestly")
+
+
 def test_subthreshold_cluster_reported():
     samples = [[_f("ainulaadne leid siin", 40, 55, "completeness")], [], []]
     stable, summaries = cluster_with_summaries(samples, n_runs=3, k=2)
@@ -182,6 +232,7 @@ def test_reuse_path_skips_sampling():
 
 if __name__ == "__main__":
     test_parallel_sampling_and_records()
+    test_bad_sample_isolated_not_fatal()
     test_subthreshold_cluster_reported()
     test_analyze_output_shape_and_refute_wiring()
     test_reuse_path_skips_sampling()

@@ -116,39 +116,69 @@ def run_self_consistency(bill_text: str, structure_hint: str, n: int, k: int,
     """Sample analyze_once N times concurrently and cluster stable findings."""
     from .llm import engine
 
+    from .llm.engine import LLMParseError
+    from .llm.client import LLMError
+
     samples: List[List[Finding]] = [[] for _ in range(n)]
     records: List[SampleRecord] = [None] * n  # type: ignore[list-item]
+
+    def _failed_record(idx: int, exc: LLMParseError) -> SampleRecord:
+        # A bad sample is recorded (raw output preserved for the transparency
+        # panel) but must not nuke the batch — absorbing sample noise is the
+        # entire point of self-consistency.
+        return SampleRecord(
+            pass_id="interpretive", sample_idx=idx, temperature=temperature,
+            raw_output=getattr(exc, "raw", "") or "", parsed=[],
+            returned_count=0, grounded_count=0, dropped_ungrounded=0,
+            error=str(exc)[:300],
+        )
+
+    def _one(idx: int):
+        try:
+            findings, record = engine.analyze_once(bill_text, structure_hint,
+                                                   temperature=temperature, model=model)
+            record.sample_idx = idx
+            return findings, record
+        except LLMParseError as exc:
+            return None, _failed_record(idx, exc)
+
     # Sample 0 runs alone so its request WRITES the prompt cache; the rest run
     # in parallel as cache READS (all-parallel means nobody can hit the cache).
-    findings0, record0 = engine.analyze_once(bill_text, structure_hint,
-                                             temperature=temperature, model=model)
-    record0.sample_idx = 0
-    samples[0] = findings0
+    findings0, record0 = _one(0)
+    samples[0] = findings0 or []
     records[0] = record0
     if n > 1:
         with ThreadPoolExecutor(max_workers=min(n - 1, 5)) as pool:
-            futures = [
-                pool.submit(engine.analyze_once, bill_text, structure_hint,
-                            temperature=temperature, model=model)
-                for _ in range(n - 1)
-            ]
-            for sample_idx, future in enumerate(futures, start=1):
+            futures = [pool.submit(_one, idx) for idx in range(1, n)]
+            for future in futures:
                 findings, record = future.result()
-                record.sample_idx = sample_idx
-                samples[sample_idx] = findings
-                records[sample_idx] = record
-    stable, summaries = cluster_with_summaries(samples, n_runs=n, k=k)
+                samples[record.sample_idx] = findings or []
+                records[record.sample_idx] = record
+
+    usable_idx = [i for i, r in enumerate(records) if r.error is None]
+    if len(usable_idx) < k:
+        raise LLMError(
+            f"only {len(usable_idx)}/{n} samples parseable — below agreement floor k={k}")
+    usable_samples = [samples[i] for i in usable_idx]
+    stable, summaries = cluster_with_summaries(usable_samples, n_runs=len(usable_idx), k=k)
+    # cluster membership indices refer to positions within usable_samples —
+    # map them back to the original sample_idx for the transparency panel.
+    for c in summaries:
+        c["members"] = [[usable_idx[p], f_idx] for p, f_idx in c["members"]]
     stats = {
         "samples": n, "min_agreement": k,
+        "usable_samples": len(usable_idx),
+        "failed_samples": n - len(usable_idx),
         "per_sample": [
             {
                 "returned": r.returned_count,
                 "grounded": r.grounded_count,
                 "dropped": r.dropped_ungrounded,
+                **({"error": r.error} if r.error else {}),
             }
             for r in records
         ],
-        "raw_findings": sum(len(s) for s in samples),
+        "raw_findings": sum(len(s) for s in usable_samples),
         "stable_findings": len(stable),
         "clusters": summaries,
     }
