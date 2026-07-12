@@ -27,8 +27,11 @@ Run: python3 -m analysis.tests.test_pipeline
 
 from __future__ import annotations
 
+import os
 import threading
 import time
+
+os.environ.setdefault("OPENROUTER_API_KEY", "test-key-hermetic")
 
 from ..models import Finding, SampleRecord, AnalysisResult
 from ..aggregate import run_self_consistency, cluster_with_summaries

@@ -23,7 +23,12 @@ Run: python3 -m analysis.tests.test_llm_layer
 from __future__ import annotations
 
 import json
+import os
 import time
+
+# Hermetic: the client's key guard runs before the (monkeypatched) HTTP call,
+# so a keyless CI runner must still pass this suite.
+os.environ.setdefault("OPENROUTER_API_KEY", "test-key-hermetic")
 
 import requests as _requests
 
