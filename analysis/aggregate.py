@@ -112,8 +112,10 @@ def cluster_llm_samples(samples: List[List[Finding]], n_runs: int, k: int) -> Li
 
 
 def run_self_consistency(bill_text: str, structure_hint: str, n: int, k: int,
-                         temperature: float, model: str = None) -> Tuple[List[Finding], List[SampleRecord], Dict[str, Any]]:
+                         temperature: float, model: str = None,
+                         sample_timeout: float = 900.0) -> Tuple[List[Finding], List[SampleRecord], Dict[str, Any]]:
     """Sample analyze_once N times concurrently and cluster stable findings."""
+    from concurrent.futures import TimeoutError as FutureTimeout
     from .llm import engine
 
     from .llm.engine import LLMParseError
@@ -122,15 +124,15 @@ def run_self_consistency(bill_text: str, structure_hint: str, n: int, k: int,
     samples: List[List[Finding]] = [[] for _ in range(n)]
     records: List[SampleRecord] = [None] * n  # type: ignore[list-item]
 
-    def _failed_record(idx: int, exc: LLMParseError) -> SampleRecord:
+    def _failed_record(idx: int, message: str, raw: str = "") -> SampleRecord:
         # A bad sample is recorded (raw output preserved for the transparency
         # panel) but must not nuke the batch — absorbing sample noise is the
         # entire point of self-consistency.
         return SampleRecord(
             pass_id="interpretive", sample_idx=idx, temperature=temperature,
-            raw_output=getattr(exc, "raw", "") or "", parsed=[],
+            raw_output=raw, parsed=[],
             returned_count=0, grounded_count=0, dropped_ungrounded=0,
-            error=str(exc)[:300],
+            error=message[:300],
         )
 
     def _one(idx: int):
@@ -140,20 +142,35 @@ def run_self_consistency(bill_text: str, structure_hint: str, n: int, k: int,
             record.sample_idx = idx
             return findings, record
         except LLMParseError as exc:
-            return None, _failed_record(idx, exc)
+            return None, _failed_record(idx, str(exc), getattr(exc, "raw", "") or "")
 
+    # Every sample gets a hard wall-clock cap: requests' timeout is per-chunk
+    # (reset on each received byte), so a slow-drip response can hang a socket
+    # forever — observed live wedging 4 threads for 2+ hours. A timed-out
+    # sample becomes a failed record; the usable<k floor still applies.
     # Sample 0 runs alone so its request WRITES the prompt cache; the rest run
     # in parallel as cache READS (all-parallel means nobody can hit the cache).
-    findings0, record0 = _one(0)
-    samples[0] = findings0 or []
-    records[0] = record0
-    if n > 1:
-        with ThreadPoolExecutor(max_workers=min(n - 1, 5)) as pool:
-            futures = [pool.submit(_one, idx) for idx in range(1, n)]
-            for future in futures:
-                findings, record = future.result()
-                samples[record.sample_idx] = findings or []
-                records[record.sample_idx] = record
+    pool = ThreadPoolExecutor(max_workers=min(n, 5))
+    try:
+        def _collect(idx, future):
+            try:
+                return future.result(timeout=sample_timeout)
+            except FutureTimeout:
+                return None, _failed_record(idx, f"sample timed out after {int(sample_timeout)}s")
+
+        findings0, record0 = _collect(0, pool.submit(_one, 0))
+        samples[0] = findings0 or []
+        records[0] = record0
+        futures = [(idx, pool.submit(_one, idx)) for idx in range(1, n)]
+        for idx, future in futures:
+            findings, record = _collect(idx, future)
+            record.sample_idx = record.sample_idx if record.sample_idx >= 0 else idx
+            samples[idx] = findings or []
+            records[idx] = record
+    finally:
+        # wait=False: a timed-out thread on a wedged socket must not re-block
+        # the batch here; the abandoned thread dies with its connection.
+        pool.shutdown(wait=False, cancel_futures=True)
 
     usable_idx = [i for i, r in enumerate(records) if r.error is None]
     if len(usable_idx) < k:

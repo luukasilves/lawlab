@@ -8,6 +8,7 @@ import time
 from typing import List, Tuple
 
 import requests
+from concurrent.futures import TimeoutError as FuturesTimeout
 
 from ..models import Finding, SampleRecord
 from ..prompts import refutation
@@ -62,19 +63,27 @@ def refute_findings(bill_text: str, candidates: List[Finding], model=None):
         output_tokens = None
         cost_usd = 0.0
         try:
-            response = chat_json(
-                refutation.SYSTEM_PROMPT,
-                refutation.build_user_blocks(bill_text, _finding_payload(finding)),
-                temperature=0.0,
-                model=model,
-            )
+            # Hard wall-clock cap: a wedged slow-drip socket must fail this
+            # candidate (upheld-by-default), never hang the whole run.
+            from concurrent.futures import ThreadPoolExecutor as _TPE
+            _pool = _TPE(max_workers=1)
+            try:
+                response = _pool.submit(
+                    chat_json,
+                    refutation.SYSTEM_PROMPT,
+                    refutation.build_user_blocks(bill_text, _finding_payload(finding)),
+                    temperature=0.0,
+                    model=model,
+                ).result(timeout=600)
+            finally:
+                _pool.shutdown(wait=False, cancel_futures=True)
             raw_output = response.text if hasattr(response, "text") else response
             input_tokens = getattr(response, "input_tokens", None)
             output_tokens = getattr(response, "output_tokens", None)
             cost_usd = getattr(response, "cost_usd", 0.0)
             verdict, reasoning = _parse_verdict(raw_output)
-        except (LLMError, requests.RequestException) as e:
-            verdict, reasoning = "upheld", f"Skeptiku kontroll ebaõnnestus: {str(e)[:160]}"
+        except (LLMError, requests.RequestException, FuturesTimeout) as e:
+            verdict, reasoning = "upheld", f"Skeptiku kontroll ebaõnnestus: {str(e)[:160] or 'ajalimiit (600s)'}"
 
         finding.skeptic_verdict = verdict
         finding.skeptic_reasoning = reasoning

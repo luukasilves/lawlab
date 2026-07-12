@@ -44,7 +44,9 @@ def _post_with_retry(url, *, headers, payload, timeout, provider):
     last_error = None
     for attempt in range(4):
         try:
-            r = requests.post(url, headers=headers, json=payload, timeout=timeout)
+            # (connect, read) tuple: requests' read timeout is per-received-chunk,
+            # not wall-clock — callers add their own hard deadline on top.
+            r = requests.post(url, headers=headers, json=payload, timeout=(20, timeout))
         except (requests.Timeout, requests.ConnectionError) as e:
             last_error = e
             if attempt == 3:
