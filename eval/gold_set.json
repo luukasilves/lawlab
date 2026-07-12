@@ -1,0 +1,50 @@
+[
+  {
+    "bill_number": "728",
+    "category": "terminology",
+    "provision_id": "§3",
+    "location": "§ 3",
+    "is_true_error": true,
+    "note": "Scope-qualifier drift: §3 amends the rate referencing '§ 1 lõike 1 punktis 5 sätestatud OSAVUSMÄNGU summast', while §2's parallel point 7 references the same provision as bare 'summast'. Same base provision, different qualifier → ambiguous tax scope. The canonical interpretive finding."
+  },
+  {
+    "bill_number": "728",
+    "category": "arithmetic",
+    "provision_id": "§2",
+    "location": "§ 2",
+    "is_true_error": false,
+    "note": "REGRESSION GUARD: the old system hallucinated a '12%+80% != 100%' error here. The real allocation in §2 lõige 10 is 8+12+80 = 100 (with `millest` sub-splits). The system MUST NOT flag this."
+  },
+  {
+    "bill_number": "synthetic",
+    "category": "reference_integrity",
+    "provision_id": "§4",
+    "location": "§ 9",
+    "is_true_error": true,
+    "note": "Jõustumissäte references non-existent § 9."
+  },
+  {
+    "bill_number": "synthetic",
+    "category": "reference_integrity",
+    "provision_id": "§4",
+    "location": "§ 2 p 9",
+    "is_true_error": true,
+    "note": "Jõustumissäte references § 2 punkt 9, but §2 has only points 1-2."
+  },
+  {
+    "bill_number": "synthetic",
+    "category": "arithmetic",
+    "provision_id": "§1",
+    "location": "§1",
+    "is_true_error": true,
+    "note": "Allocation 50+30+18 = 98 != 100."
+  },
+  {
+    "bill_number": "synthetic",
+    "category": "structural_integrity",
+    "provision_id": "§3",
+    "location": "§ 3",
+    "is_true_error": true,
+    "note": "Section numbering gap: §1, §2, §4 (missing §3)."
+  }
+]

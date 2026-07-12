@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="et">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apsakaleidja — seaduseelnõu analüüs</title>
+<style>
+  :root{
+    --ink:#1a1a1a; --soft:#555; --muted:#888; --line:#e4e4e4; --bg:#fafaf8; --panel:#fff;
+    --high:#c0392b; --med:#c77d12; --low:#6b7280;
+    --high-bg:#fdecea; --med-bg:#fdf3e3; --low-bg:#f1f2f4;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif}
+  header{padding:20px 28px;border-bottom:1px solid var(--line);background:var(--panel)}
+  header h1{margin:0;font-size:19px;font-weight:650}
+  header .meta{color:var(--muted);font-size:13px;margin-top:4px}
+  .counts{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+  .pill{font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line)}
+  .pill.high{color:var(--high);background:var(--high-bg);border-color:#f3c9c3}
+  .pill.med{color:var(--med);background:var(--med-bg);border-color:#f0dcb8}
+  .pill.low{color:var(--low);background:var(--low-bg)}
+  .layout{display:grid;grid-template-columns:1fr 400px;gap:0;height:calc(100vh - 92px)}
+  .doc{overflow:auto;padding:30px 40px;background:var(--panel);border-right:1px solid var(--line)}
+  .doc .text{white-space:pre-wrap;font-family:"Iowan Old Style",Georgia,"Times New Roman",serif;
+             font-size:15.5px;line-height:1.7;max-width:760px}
+  mark{border-radius:3px;padding:1px 2px;cursor:pointer;border-bottom:2px solid transparent}
+  mark.HIGH{background:var(--high-bg);border-bottom-color:var(--high)}
+  mark.MEDIUM{background:var(--med-bg);border-bottom-color:var(--med)}
+  mark.LOW{background:var(--low-bg);border-bottom-color:var(--low)}
+  mark.active{outline:2px solid #3367d6;outline-offset:1px}
+  .side{overflow:auto;padding:18px 20px;background:var(--bg)}
+  .side h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px;cursor:pointer}
+  .card:hover{border-color:#cfcfcf}
+  .card.active{border-color:#3367d6;box-shadow:0 0 0 1px #3367d6}
+  .card .row{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  .sev{font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px}
+  .sev.HIGH{color:#fff;background:var(--high)} .sev.MEDIUM{color:#fff;background:var(--med)} .sev.LOW{color:#fff;background:var(--low)}
+  .conf{font-size:12px;color:var(--soft)}
+  .src{font-size:11px;color:var(--muted);margin-left:auto}
+  .card .title{font-weight:600;font-size:14px}
+  .card .loc{font-size:12px;color:var(--muted);margin-top:2px}
+  .detail{font-size:13.5px;color:var(--soft);margin-top:8px;display:none}
+  .card.active .detail{display:block}
+  .detail b{color:var(--ink)}
+  .detail .ev{font-family:Georgia,serif;background:#fbfaf6;border-left:3px solid #ddd;padding:6px 10px;margin:8px 0;font-size:13px}
+  .detail .honte{display:inline-block;font-size:11.5px;color:#3a5; background:#eef7f0;border:1px solid #cfe6d4;border-radius:4px;padding:2px 7px;margin-top:6px}
+  .fb{margin-top:10px;display:flex;gap:8px}
+  .fb button{font:inherit;font-size:12px;padding:4px 10px;border-radius:6px;border:1px solid var(--line);background:#fff;cursor:pointer}
+  .fb button.ok:hover{border-color:#3a5;color:#2a7} .fb button.no:hover{border-color:var(--high);color:var(--high)}
+  .fb .done{font-size:12px;color:var(--muted);align-self:center}
+  .note{font-size:12px;color:var(--muted);margin:14px 0 4px}
+  .empty{color:var(--muted);padding:20px}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Apsakaleidja</h1>
+  <div class="meta" id="meta"></div>
+  <div class="counts" id="counts"></div>
+</header>
+<div class="layout">
+  <div class="doc"><div class="text" id="text"></div></div>
+  <div class="side">
+    <h2>Leiud <span id="fcount"></span></h2>
+    <div class="note" id="framing"></div>
+    <div id="list"></div>
+  </div>
+</div>
+<script>
+const SEV_RANK={HIGH:3,MEDIUM:2,LOW:1};
+const CAT_ET={reference_integrity:"Viiteterviklus",structural_integrity:"Struktuuriterviklus",
+  arithmetic:"Arvutuslik õigsus",temporal:"Ajaline loogika",terminology:"Terminoloogiline järjepidevus",
+  logical_contradiction:"Loogiline vastuolu",completeness:"Täielikkus",linguistic_ambiguity:"Keeleline ühemõttelisus"};
+function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+
+function render(data){
+  document.getElementById("title").textContent = data.title || "Apsakaleidja";
+  const cfg=data.config||{};
+  document.getElementById("meta").textContent =
+    `${data.bill_number?("Eelnõu "+data.bill_number+" · "):""}mudel ${data.model||"?"} · prompt ${data.prompt_version||"?"}`;
+  const fs=(data.findings||[]).slice().sort((a,b)=>
+    (SEV_RANK[b.severity]-SEV_RANK[a.severity])||((b.confidence||0)-(a.confidence||0))||(a.char_start-b.char_start));
+
+  // counts
+  const c={HIGH:0,MEDIUM:0,LOW:0}; fs.forEach(f=>c[f.severity]++);
+  document.getElementById("counts").innerHTML =
+    `<span class="pill high">${c.HIGH} kõrge</span><span class="pill med">${c.MEDIUM} keskmine</span><span class="pill low">${c.LOW} madal</span>`;
+  document.getElementById("fcount").textContent = `(${fs.length})`;
+  const n=cfg.samples||5;
+  document.getElementById("framing").textContent =
+    `Kuvatakse ainult püsivad leiud (esinevad ≥${cfg.k||3}/${n} sõltumatus analüüsis). Usaldusväärsus = kokkulangevus.`;
+
+  // highlighted document
+  const text=data.text||""; let cursor=0, html="";
+  fs.map((f,i)=>({f,i})).sort((a,b)=>a.f.char_start-b.f.char_start).forEach(({f,i})=>{
+    if(f.char_start<cursor||f.char_start==null) return;       // skip overlaps
+    html+=esc(text.slice(cursor,f.char_start));
+    html+=`<mark class="${f.severity}" data-id="${i}" id="mark-${i}">`+esc(text.slice(f.char_start,f.char_end))+`</mark>`;
+    cursor=f.char_end;
+  });
+  html+=esc(text.slice(cursor));
+  document.getElementById("text").innerHTML=html;
+
+  // findings list
+  const list=document.getElementById("list");
+  list.innerHTML = fs.length? "" : `<div class="empty">Püsivaid leide ei tuvastatud.</div>`;
+  fs.forEach((f,i)=>{
+    const conf=Math.round((f.confidence||0)*100);
+    const runs=f.runs_total?` ${f.runs_found}/${f.runs_total}`:"";
+    const card=document.createElement("div"); card.className="card"; card.id="card-"+i;
+    card.innerHTML=`
+      <div class="row">
+        <span class="sev ${f.severity}">${f.severity}</span>
+        <span class="conf">${conf}%${runs}</span>
+        <span class="src">${f.source==="deterministic"?"reegel":"mudel"}</span>
+      </div>
+      <div class="title">${esc(f.title||"")}</div>
+      <div class="loc">${esc(f.location||f.provision_id||"")} · ${esc(CAT_ET[f.category]||f.category)}</div>
+      <div class="detail">
+        <p>${esc(f.description||"")}</p>
+        ${f.reasoning?`<p><b>Põhjendus:</b> ${esc(f.reasoning)}</p>`:""}
+        ${f.suggestion?`<p><b>Soovitus:</b> ${esc(f.suggestion)}</p>`:""}
+        <div class="ev">${esc((f.evidence_quote||"").trim())}</div>
+        ${f.honte_rule?`<span class="honte">${esc(f.honte_rule)}</span>`:""}
+        <div class="fb">
+          <button class="ok" data-v="confirm">✓ Kinnita</button>
+          <button class="no" data-v="dismiss">✕ Lükka tagasi</button>
+          <span class="done"></span>
+        </div>
+      </div>`;
+    card.addEventListener("click",e=>{ if(e.target.tagName==="BUTTON")return; select(i); });
+    card.querySelectorAll(".fb button").forEach(b=>b.addEventListener("click",()=>feedback(i,b.dataset.v,card)));
+    list.appendChild(card);
+  });
+  window.__fs=fs;
+}
+function select(i){
+  document.querySelectorAll(".card.active,mark.active").forEach(e=>e.classList.remove("active"));
+  const card=document.getElementById("card-"+i), mark=document.getElementById("mark-"+i);
+  if(card){card.classList.add("active");card.scrollIntoView({block:"nearest",behavior:"smooth"});}
+  if(mark){mark.classList.add("active");mark.scrollIntoView({block:"center",behavior:"smooth"});}
+}
+function feedback(i,verdict,card){
+  // In production: POST to Supabase `feedback` (finding_id, verdict). Here: record locally.
+  card.querySelector(".done").textContent = verdict==="confirm"?"märgitud: kinnitatud":"märgitud: tagasi lükatud";
+}
+document.addEventListener("click",e=>{ const m=e.target.closest("mark"); if(m) select(+m.dataset.id); });
+
+fetch("demo_data.json").then(r=>r.json()).then(render).catch(e=>{
+  document.getElementById("text").innerHTML=`<div class="empty">Lae andmed: käivita <code>python3 -m web.export_demo &lt;bill.txt&gt; &lt;nr&gt;</code> ja serveeri kausta (<code>python3 -m http.server</code>).<br><br>${e}</div>`;
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+psycopg-binary==3.3.4
+psycopg==3.3.4
+pymupdf==1.28.0
+python-docx==1.2.0
+python-dotenv==1.2.2
+requests==2.34.2

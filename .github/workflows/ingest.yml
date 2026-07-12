@@ -1,0 +1,33 @@
+name: ingest-and-analyze
+
+# The fix for the outage's root cause: the old pipeline was run by hand and went
+# stale. This runs ingestion daily, then analyses any new/changed bills.
+on:
+  schedule:
+    - cron: "0 5 * * *"      # 05:00 UTC daily
+  workflow_dispatch: {}        # manual trigger
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: pip install -r requirements.txt
+      - name: Ingest active draft bills
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python3 -m ingestion.run_ingest --pages 2
+      - name: Analyse new/changed bills
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # optional: provider switch
+        run: python3 -m ingestion.analyze_pending
