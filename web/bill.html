@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="et">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apsakaleidja</title>
+<script type="importmap">
+{
+  "imports": {
+    "api.js": "./js/api.js",
+    "i18n.js": "./js/i18n.js"
+  }
+}
+</script>
+<style>
+  :root {
+    --ink: #181818;
+    --soft: #555c66;
+    --muted: #77808c;
+    --line: #dedfdc;
+    --bg: #f7f7f4;
+    --panel: #fff;
+    --panel-soft: #fbfbf8;
+    --rule: #2f6f5e;
+    --model: #4e5f91;
+    --high: #b42318;
+    --medium: #9a5b10;
+    --low: #59616d;
+    --high-bg: #fdebea;
+    --medium-bg: #fff3dd;
+    --low-bg: #eef1f4;
+    --focus: #2f65d7;
+    --ok: #1f7a4d;
+    --bad: #8b9098;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  }
+
+  a {
+    color: inherit;
+  }
+
+  button {
+    font: inherit;
+  }
+
+  .page-header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    padding: 18px 24px 16px;
+  }
+
+  .topline {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .back-link,
+  .external-link {
+    align-items: center;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    display: inline-flex;
+    gap: 6px;
+    min-height: 32px;
+    padding: 5px 10px;
+    text-decoration: none;
+  }
+
+  .back-link:hover,
+  .external-link:hover {
+    border-color: #b9bcb8;
+  }
+
+  .header-main {
+    align-items: end;
+    display: grid;
+    gap: 16px;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  h1 {
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.2;
+    margin: 0;
+  }
+
+  .meta-grid {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+    margin-top: 16px;
+    max-width: 980px;
+  }
+
+  .meta-card {
+    background: var(--panel-soft);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    min-height: 64px;
+    padding: 9px 11px;
+  }
+
+  .meta-label {
+    color: var(--muted);
+    display: block;
+    font-size: 12px;
+    margin-bottom: 3px;
+  }
+
+  .meta-value {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .two-pane {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(380px, 440px);
+    min-height: calc(100vh - 174px);
+  }
+
+  .doc-pane {
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    overflow: auto;
+    padding: 30px clamp(18px, 4vw, 46px);
+  }
+
+  .doc-text {
+    font-family: "Iowan Old Style", Georgia, "Times New Roman", serif;
+    font-size: 16px;
+    line-height: 1.75;
+    max-width: 820px;
+    white-space: pre-wrap;
+  }
+
+  mark {
+    border-radius: 3px;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    padding: 1px 2px;
+  }
+
+  mark.HIGH {
+    background: var(--high-bg);
+    border-bottom-color: var(--high);
+  }
+
+  mark.MEDIUM {
+    background: var(--medium-bg);
+    border-bottom-color: var(--medium);
+  }
+
+  mark.LOW {
+    background: var(--low-bg);
+    border-bottom-color: var(--low);
+  }
+
+  mark.active {
+    outline: 2px solid var(--focus);
+    outline-offset: 1px;
+  }
+
+  mark.focus {
+    animation: flash 1.2s ease-out;
+  }
+
+  .mark-anchor {
+    display: inline-block;
+    height: 0;
+    overflow: hidden;
+    width: 0;
+  }
+
+  @keyframes flash {
+    0% { box-shadow: 0 0 0 4px rgba(47, 101, 215, .35); }
+    100% { box-shadow: 0 0 0 0 rgba(47, 101, 215, 0); }
+  }
+
+  .side-pane {
+    overflow: auto;
+    padding: 18px;
+  }
+
+  .section-title {
+    align-items: baseline;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    margin: 0 0 10px;
+  }
+
+  .section-title h2 {
+    font-size: 13px;
+    font-weight: 700;
+    margin: 0;
+    text-transform: uppercase;
+  }
+
+  .count-text {
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .finding-card,
+  .info-panel,
+  .history-row {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+
+  .finding-card {
+    cursor: pointer;
+    margin-bottom: 10px;
+    padding: 12px 13px;
+  }
+
+  .finding-card:hover {
+    border-color: #c5c8c2;
+  }
+
+  .finding-card.active {
+    border-color: var(--focus);
+    box-shadow: 0 0 0 1px var(--focus);
+  }
+
+  .finding-card.refuted {
+    background: #f2f2ef;
+    color: #60656d;
+    cursor: default;
+  }
+
+  .finding-card.refuted .finding-title {
+    text-decoration: line-through;
+  }
+
+  .card-topline,
+  .badge-row,
+  .feedback-row {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+  }
+
+  .card-topline {
+    margin-bottom: 7px;
+  }
+
+  .badge {
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    display: inline-flex;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+    padding: 3px 7px;
+  }
+
+  .severity {
+    border: 0;
+    color: #fff;
+  }
+
+  .severity.HIGH {
+    background: var(--high);
+  }
+
+  .severity.MEDIUM {
+    background: var(--medium);
+  }
+
+  .severity.LOW {
+    background: var(--low);
+  }
+
+  .source-rule {
+    background: #edf7f2;
+    color: var(--rule);
+  }
+
+  .source-model {
+    background: #eef1fb;
+    color: var(--model);
+  }
+
+  .skeptic-upheld {
+    background: #edf8f1;
+    color: var(--ok);
+  }
+
+  .skeptic-refuted {
+    background: #eceeed;
+    color: var(--bad);
+  }
+
+  .finding-title {
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.35;
+  }
+
+  .finding-subline {
+    color: var(--soft);
+    font-size: 13px;
+    margin-top: 4px;
+  }
+
+  .honte-chip {
+    background: #f6f6f2;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    color: #4c514b;
+    display: inline-flex;
+    font-size: 12px;
+    margin-left: 5px;
+    padding: 2px 6px;
+  }
+
+  .finding-details {
+    margin-top: 9px;
+  }
+
+  .finding-details summary,
+  .info-panel summary {
+    cursor: pointer;
+    font-weight: 650;
+  }
+
+  .detail-block {
+    color: var(--soft);
+    font-size: 13.5px;
+    margin-top: 8px;
+  }
+
+  .detail-label {
+    color: var(--ink);
+    font-weight: 650;
+  }
+
+  .quote-block,
+  pre.raw-output {
+    background: #fbfaf6;
+    border: 1px solid var(--line);
+    border-left: 3px solid #c6c8c2;
+    border-radius: 6px;
+    color: #30332f;
+    margin: 8px 0 0;
+    padding: 8px 10px;
+    white-space: pre-wrap;
+  }
+
+  .feedback-row {
+    margin-top: 10px;
+  }
+
+  .feedback-row button,
+  .history-row {
+    cursor: pointer;
+  }
+
+  .feedback-row button {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    min-height: 30px;
+    padding: 4px 10px;
+  }
+
+  .feedback-row button:hover {
+    border-color: #aeb3aa;
+  }
+
+  .feedback-message {
+    color: var(--soft);
+    font-size: 13px;
+  }
+
+  .error-text {
+    color: var(--high);
+  }
+
+  .empty-panel,
+  .info-panel {
+    padding: 12px 13px;
+  }
+
+  .empty-panel {
+    background: var(--panel);
+    border: 1px dashed var(--line);
+    border-radius: 8px;
+    color: var(--soft);
+  }
+
+  .refuted-block,
+  .panel-block {
+    margin-top: 16px;
+  }
+
+  .refuted-heading {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    margin: 0 0 8px;
+  }
+
+  .refuted-heading h3 {
+    font-size: 14px;
+    margin: 0;
+  }
+
+  .pipeline-flow {
+    counter-reset: step;
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 0;
+  }
+
+  .pipeline-step {
+    border-top: 1px solid var(--line);
+    counter-increment: step;
+    padding: 10px 0;
+  }
+
+  .pipeline-step:first-child {
+    border-top: 0;
+  }
+
+  .pipeline-step h4 {
+    align-items: center;
+    display: flex;
+    font-size: 14px;
+    gap: 8px;
+    margin: 0 0 6px;
+  }
+
+  .pipeline-step h4::before {
+    align-items: center;
+    background: #232826;
+    border-radius: 50%;
+    color: #fff;
+    content: counter(step);
+    display: inline-flex;
+    flex: 0 0 22px;
+    font-size: 12px;
+    height: 22px;
+    justify-content: center;
+    width: 22px;
+  }
+
+  .small-list {
+    color: var(--soft);
+    font-size: 13px;
+    margin: 0;
+    padding-left: 18px;
+  }
+
+  .sample-table {
+    border-collapse: collapse;
+    font-size: 12.5px;
+    margin-top: 8px;
+    width: 100%;
+  }
+
+  .sample-table th,
+  .sample-table td {
+    border-bottom: 1px solid var(--line);
+    padding: 5px 4px;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .sample-table tr.sample-row {
+    cursor: pointer;
+  }
+
+  .sample-table tr.sample-row:hover {
+    background: #f5f6f2;
+  }
+
+  .raw-sample {
+    margin-top: 8px;
+  }
+
+  code.copyable {
+    background: #f5f5f1;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    display: block;
+    font-size: 12px;
+    margin-top: 6px;
+    overflow-wrap: anywhere;
+    padding: 7px 8px;
+    user-select: all;
+  }
+
+  .history-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .history-row {
+    display: grid;
+    gap: 3px;
+    padding: 9px 10px;
+    text-align: left;
+    width: 100%;
+  }
+
+  .history-row.current {
+    border-color: var(--focus);
+  }
+
+  .history-main {
+    font-weight: 650;
+  }
+
+  .history-meta {
+    color: var(--soft);
+    font-size: 12.5px;
+  }
+
+  .app-error {
+    color: var(--high);
+    padding: 24px;
+  }
+
+  @media (max-width: 920px) {
+    .header-main,
+    .two-pane,
+    .meta-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .two-pane {
+      min-height: auto;
+    }
+
+    .doc-pane {
+      border-bottom: 1px solid var(--line);
+      border-right: 0;
+      max-height: 54vh;
+    }
+  }
+</style>
+</head>
+<body>
+<header class="page-header">
+  <div class="topline">
+    <a class="back-link" id="backLink" href="/"></a>
+    <a class="external-link" id="riigikoguLink" rel="noreferrer" target="_blank" hidden></a>
+  </div>
+  <div class="header-main">
+    <h1 id="billTitle">Apsakaleidja</h1>
+  </div>
+  <div class="meta-grid" id="metaGrid"></div>
+</header>
+<main class="two-pane" id="billApp">
+  <section class="doc-pane" aria-labelledby="billTitle">
+    <div class="doc-text" id="docText"></div>
+  </section>
+  <aside class="side-pane" id="sidePane">
+    <div class="section-title">
+      <h2 id="resultsTitle"></h2>
+      <span class="count-text" id="resultsCount"></span>
+    </div>
+    <div id="findingsList"></div>
+    <div id="refutedSection"></div>
+    <div id="pipelinePanel" class="panel-block"></div>
+    <div id="historyPanel" class="panel-block"></div>
+    <div id="rawJsonPanel" class="panel-block"></div>
+  </aside>
+</main>
+<script type="module" src="./js/bill.js"></script>
+</body>
+</html>

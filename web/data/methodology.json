@@ -1,0 +1,245 @@
+{
+  "categories": [
+    {
+      "honte_citation": "HÕNTE § 28 (viitamine)",
+      "key": "reference_integrity",
+      "label_en": "Reference integrity",
+      "label_et": "Viiteterviklus"
+    },
+    {
+      "honte_citation": "HÕNTE § 23 (paragrahvide numeratsioon ja pealkirjastamine)",
+      "key": "structural_integrity",
+      "label_en": "Structural integrity",
+      "label_et": "Struktuuriterviklus"
+    },
+    {
+      "honte_citation": "HÕNTE § 16 (sätte täpne sõnastamine)",
+      "key": "arithmetic",
+      "label_en": "Arithmetic accuracy",
+      "label_et": "Arvutuslik õigsus"
+    },
+    {
+      "honte_citation": "HÕNTE § 14 (jõustumisnorm)",
+      "key": "temporal",
+      "label_en": "Temporal logic",
+      "label_et": "Ajaline loogika"
+    },
+    {
+      "honte_citation": "HÕNTE § 17 (terminite ühtne kasutamine)",
+      "key": "terminology",
+      "label_en": "Terminological consistency",
+      "label_et": "Terminoloogiline järjepidevus"
+    },
+    {
+      "honte_citation": "HÕNTE § 16 (sätte selge ja täpne sõnastamine)",
+      "key": "logical_contradiction",
+      "label_en": "Logical contradictions",
+      "label_et": "Loogilised vastuolud"
+    },
+    {
+      "honte_citation": "HÕNTE § 16 (sätte terviklik sõnastamine)",
+      "key": "completeness",
+      "label_en": "Completeness",
+      "label_et": "Täielikkus"
+    },
+    {
+      "honte_citation": "HÕNTE § 15 (keele- ja stiilinõuded)",
+      "key": "linguistic_ambiguity",
+      "label_en": "Linguistic ambiguity",
+      "label_et": "Keeleline ühemõttelisus"
+    }
+  ],
+  "checks": [
+    {
+      "category": "structural_integrity",
+      "description_en": "Detects gaps and duplicate numbers in top-level section numbering.",
+      "description_et": "Tuvastab lüngad ja kordused paragrahvide numeratsioonis.",
+      "enabled": true,
+      "id": "section_numbering",
+      "name_en": "Section numbering",
+      "name_et": "Paragrahvide numeratsioon",
+      "version": 1
+    },
+    {
+      "category": "structural_integrity",
+      "description_en": "Detects gaps and duplicate numbers in amendment instruction lists.",
+      "description_et": "Tuvastab lüngad ja kordused muutmiskäskude numeratsioonis.",
+      "enabled": true,
+      "id": "instruction_numbering",
+      "name_en": "Amendment instruction numbering",
+      "name_et": "Muutmispunktide numeratsioon",
+      "version": 1
+    },
+    {
+      "category": "reference_integrity",
+      "description_en": "Verifies that entry-into-force references resolve to provisions that exist in the bill.",
+      "description_et": "Kontrollib, et jõustumissätte viited osutavad eelnõus olemasolevatele sätetele.",
+      "enabled": true,
+      "id": "eif_refs",
+      "name_en": "Entry-into-force references",
+      "name_et": "Jõustumissätte viited",
+      "version": 1
+    },
+    {
+      "category": "arithmetic",
+      "description_en": "Checks that sibling percentage allocations sum to 100.",
+      "description_et": "Kontrollib, et paralleelsete punktide protsendid summeeruvad 100-le.",
+      "enabled": true,
+      "id": "percentage_alloc",
+      "name_en": "Percentage allocation arithmetic",
+      "name_et": "Protsendijaotuste aritmeetika",
+      "version": 1
+    }
+  ],
+  "data_api": {
+    "base": "https://xnwagfmsakedcilpauvx.supabase.co/rest/v1",
+    "note_en": "All analysis data is publicly readable. Send the publishable key in the apikey header.",
+    "note_et": "Kõik analüüsiandmed on avalikult loetavad. Lisa päisesse apikey (avalik publishable-võti lehe lähtekoodis).",
+    "tables": [
+      "bills",
+      "bill_documents",
+      "analyses",
+      "analysis_samples",
+      "findings",
+      "pipeline_runs",
+      "honte_rules",
+      "eval_labels",
+      "bill_index",
+      "analysis_history"
+    ]
+  },
+  "engine": {
+    "model": "anthropic/claude-opus-4.8",
+    "provider": "openrouter",
+    "sampling": {
+      "min_agreement": 3,
+      "samples": 5,
+      "temperature": 0.4
+    }
+  },
+  "honte_rules": [
+    {
+      "mapped_categories": [
+        "temporal"
+      ],
+      "rule_id": "HÕNTE § 14",
+      "section": "Jõustumisnorm ja seadusele tagasiulatuva jõu andmine",
+      "text": "§ 14. Jõustumisnorm ja seadusele tagasiulatuva jõu andmine (1) Jõustumisnormi kavandamisel võetakse arvesse aeg, mis on vajalik uute normidega tutvumiseks, eriti isikute õiguste ja kohustuste muutmise korral, ning vajalikuks korralduslikuks ja halduslikuks eeltööks, sealhulgas seaduse väljakuulutamiseks, avaldamiseks, rakendusaktide andmiseks, ning ka seaduse rakendamiseks piisavate vahendite olemasolu. (2) Paragrahvi 13 lõike 1 punktis 4 nimetatud jõustumissätte kavandamisel lähtutakse järgmisest: 1) seaduse jõustumist ei sätestata enne selle Riigi Teatajas avaldamisele järgnevat päeva; 2) seaduse mõnele sättele võib põhjendatud juhul määrata seaduse jõustumise üldisest tähtpäevast erineva "
+    },
+    {
+      "mapped_categories": [
+        "linguistic_ambiguity"
+      ],
+      "rule_id": "HÕNTE § 15",
+      "section": "Keele- ja stiilinõuded",
+      "text": "§ 15. Keele- ja stiilinõuded (1) Seaduseelnõu keelekasutus peab vastama eesti kirjakeele normile. (2) Seaduseelnõu keel peab olema selge, ühetähenduslik ja täpne. Ühe ja sama mõtte edasiandmisel välditakse eri väljendite kasutamist. Sünonüümide kasutamine ei ole lubatud. (3) Eelnõu sõnastamisel kasutatakse võimaluse korral umbisikulise tegumoe oleviku kindlat kõneviisi. Välislepingu menetlemist käsitlevas seaduseelnõus on lubatav da- tegevusnime kasutamine. (4) Eelnõus eelistatakse ainsuslikku vormi, välja arvatud juhul, kui ainsuse ja mitmuse eristamisel on õiguslik tähendus. 1. Riigikogu 23. veebruari 2011. a otsuse „Õiguspoliitika arengusuunad aastani 2018“ punkti 9.1.4. järgi tuleb tagad"
+    },
+    {
+      "mapped_categories": [
+        "logical_contradiction",
+        "completeness",
+        "arithmetic"
+      ],
+      "rule_id": "HÕNTE § 16",
+      "section": "Sätte sõnastamine",
+      "text": "§ 16. Sätte sõnastamine Säte sõnastatakse õigusnormi liigile vastava struktuuri kohaselt. 1. Traditsiooniliselt nimetatakse asjaolude kirjeldust õigusnormi kehtimise jaoks õigusnormi hüpoteesiks. Juriidiliste tagajärgede kirjeldus, mis saabub hüpoteesis nimetatud asjaolude esinemisel, on dispositsioon või sanktsioon. Hüpoteesis kirjeldatakse neid faktilisi asjaolusid, mille puhul tuleb sellest normist lähtuda. Dispositsioon näitab, milline peab olema inimeste käitumine, kui nad on sattunud hüpoteesis kirjeldatud olukorda. Sanktsioon näeb ette mõjutusvahendid, mida võidakse rakendada isikute suhtes, kes ei käitu õigusnormi nõuete kohaselt (lähemalt õigusnormi teemal vt Raul Narits. Õiguse ent"
+    },
+    {
+      "mapped_categories": [
+        "terminology"
+      ],
+      "rule_id": "HÕNTE § 17",
+      "section": "Terminite ja võõrsõnade kasutamine",
+      "text": "§ 17. Terminite ja võõrsõnade kasutamine (1) Seaduseelnõus kasutatakse kehtivas õiguses ja reguleeritavas valdkonnas tuntud ja enamlevinud termineid. (2) Uut terminit võib kasutada valdkonna: 1) esmasel reguleerimisel; 2) uuesti reguleerimisel, kui uus termin vastab paremini § 9 lõikes 2 esitatud eelnõu aru- saadavuse nõuetele. (3) Võõrsõna võib kasutada üksnes juhul, kui selle kasutus on eesti keeles levinud või kui sõnal puudub eesti keeles algupärane vaste. 1. Terminite kasutamisel õigustloovas aktis tuleb aluseks võtta järgmised põhimõtted. Termini täpsus – termin peab väljendama tähistatavat mõistet täpselt ja täielikult; eelnõu koostaja peab tähistama mõistet sellise sõna või väljendig"
+    },
+    {
+      "mapped_categories": [
+        "terminology"
+      ],
+      "rule_id": "HÕNTE § 18",
+      "section": "Termini määratlemine",
+      "text": "§ 18. Termini määratlemine (1) Ühest või mitmest sõnast koosneva termini tähendus määratletakse õigusselguse eesmärgil, kui: 1) eelnõu on reguleeritava valdkonna või õigusinstituudi termineid sisaldav üldakt ja terminil on selle seisukohalt oluline õiguslik tähendus; 2) terminit kasutatakse tavalisest või õigusaktides seni sätestatust erinevas tähenduses; 3) terminit on võimalik mitmeti tõlgendada või on sellel mitu tähendust; 4) termin ei ole eesti keeles üldlevinud. (2) Euroopa Liidu õigusega seotud seaduseelnõus kasutatavad terminid peavad olema kooskõlas Euroopa Liidu õiguses kasutusel olevate terminitega ning eelnõus neid üldjuhul enam ei määratleta. (3) Termini sisu määratletakse selle"
+    },
+    {
+      "mapped_categories": [
+        "structural_integrity"
+      ],
+      "rule_id": "HÕNTE § 23",
+      "section": "Paragrahvide numeratsioon ja pealkirjastamine",
+      "text": "§ 23. Paragrahvide numeratsioon ja pealkirjastamine (1) Rohkem kui ühest paragrahvist koosneva seaduseelnõu paragrahvid vormistatakse numereeritud loeteluna. (2) Paragrahvid nummerdatakse eelnõu läbivalt araabia numbritega. (3) Paragrahvile antakse sisu iseloomustav lühike pealkiri nimetavas käändes. (4) Ühest või kahest paragrahvist koosneva seaduseelnõu paragrahv võib olla pealkirjata. 1. Üheparagrahvilises eelnõus sätte ette tähist „§“ ja paragrahvi numbrit ei lisata. 2. Paragrahvide läbiv numeratsioon on vajalik selleks, et paragrahvile oleks võimalik viidata vahetult ehk ilma suurema jaotusühikuta. 3. Paragrahvi pealkiri tuletatakse üldjuhul üldsätte ehk esimese lõike sisu järgi. Kui pa"
+    },
+    {
+      "mapped_categories": [
+        "reference_integrity"
+      ],
+      "rule_id": "HÕNTE § 28",
+      "section": "Viitamine",
+      "text": "§ 28. Viitamine (1) Seaduseelnõus ei taasesitata muu seaduse ega sama eelnõu teist sätet, vaid viidatakse sellele. (2) Otsene viide on viide sama seaduseelnõu või muu seaduse sättele või muule struktuuriosale või Euroopa Liidu õigusakti sättele või muule struktuuriosale. (3) Kaudne viide on viide kohaldatavale õigusharule, -instituudile, õigusakti liigile või õigusaktile, samuti viide Euroopa Liidu pädevusse kuuluvale valdkonnale või õigusaktile. (4) Otse viitamisel välditakse viitamist viitavale sättele ja korduvat viitamist samas sättes. (5) Eesti Vabariigi põhiseadusele võib viidata selle ja Euroopa Liidu õigusakti koostoime avamise või muu sedalaadi vajaduse korral. (6) Seaduseelnõus väl"
+    },
+    {
+      "mapped_categories": [
+        "reference_integrity"
+      ],
+      "rule_id": "HÕNTE § 29",
+      "section": "Viite vormistamine",
+      "text": "§ 29. Viite vormistamine (1) Otsene viide teisele seadusele peab sisaldama lisaks § 28 lõikes 2 nimetatule viidatava seaduse pealkirja, mis kirjutatakse väikese algustähega ja ilma jutumärkideta. Kui pealkiri on pikk ja muust tekstist raskesti eristatav, võib tekstis seaduse pealkirja tähistada jutumärkidega ja kirjutada suure algustähega. (2) Otsene viide eelnõu teisele struktuuriosale vormistatakse, kasutades näiteks järgmisi tüüpvormeleid asjakohases käändes: 1) eelnõusiseses viites – „käesoleva seaduse § x lõike y punkt z”; 2) paragrahvisiseses viites – „käesoleva paragrahvi lõike x punkt y”; 3) lõikesiseses viites – „käesoleva lõike punkt x”; 4) lõikesiseses viites – „käesoleva lõike es"
+    },
+    {
+      "mapped_categories": [
+        "structural_integrity"
+      ],
+      "rule_id": "HÕNTE § 37",
+      "section": "Muudetava seaduse struktuuriosade numeratsiooni säilitamine",
+      "text": "§ 37. Muudetava seaduse struktuuriosade numeratsiooni säilitamine (1) Seaduse täiendamisel paragrahvide või muude struktuuriosadega ei muudeta kehtiva seaduse struktuuriosade numeratsiooni. Kehtivate samaliigiliste struktuuriosade vahele uue struktuuriosa lisamisel antakse sellele eelneva struktuuriosa number araabianumbrilise ülaindeksiga. Uue paragrahvi või muu struktuuriosa lisamisel ei anta sellele samas seaduses varem kehtetuks tunnistatud struktuuriosa numbrit. (2) Olemasolevale sättele teise numbri andmine on lubatud juhul, kui sätete loetelu ei saa uue, ülaindeksiga sättega täiendada, ilma et muutuks sätete loogiline järjestus. (3) Uue esimese paragrahvi, lõike või punkti paigutamist"
+    }
+  ],
+  "limitations_en": [
+    "Only the main text of the bill is analysed — explanatory memoranda are not analysed.",
+    "Old .doc files and image-based PDFs cannot be read because they do not contain extractable text.",
+    "Deterministic checks cover mechanical errors; substantive assessments are made by a language model and its findings are probabilistic.",
+    "Corpus: draft acts (SE) whose proceedings have changed since 1 January 2026."
+  ],
+  "limitations_et": [
+    "Analüüsitakse ainult eelnõu põhiteksti — seletuskirja ei analüüsita.",
+    "Vanas .doc-vormingus ja pildipõhiseid PDF-e ei suudeta lugeda (tekst puudub).",
+    "Deterministlikud kontrollid katavad mehaanilisi vigu; sisulisi hinnanguid annab keelemudel, mille leiud on tõenäosuslikud.",
+    "Korpus: seaduseelnõud (SE), mille menetluses on toimunud muutusi alates 1. jaanuarist 2026."
+  ],
+  "passes": [
+    {
+      "description_en": "The LLM samples N independent analyses; only findings stable across runs are published.",
+      "description_et": "LLM otsib sisulisi vastuolusid N sõltumatu analüüsiga; avaldatakse ainult stabiilsed leiud.",
+      "enabled": true,
+      "id": "interpretive",
+      "kind": "sampled",
+      "name_en": "Interpretive analysis",
+      "name_et": "Tõlgenduslik analüüs",
+      "prompt_sha": "d0aeefc4794bfc6641b23ce8e01de98f93ba38131fec8c0484c65d60d5ad2bb5",
+      "system_prompt": "Sa oled Eesti seaduseelnõude tehniline analüütik. Tuvasta eelnõu normatiivtekstis SISEMISI vigu — probleeme, mis on nähtavad ainult teksti enda põhjal, ilma poliitilise hinnangu või väliste seaduste tundmiseta.\n\nPÕHIPRINTSIIP (õigusloometehnika): eeldatakse, et iga sõnastuserinevus on tahtlik. Kui paralleelsed sätted kasutavad sama mõiste kohta erinevat sõnastust, võib kohus tõlgendada neid erinevalt.\n\nNumeratsiooni, sise-viidete ja protsentide aritmeetikat kontrollib eraldi deterministlik tööriist. KESKENDU sina TÕLGENDUSLIKELE vigadele:\n\n1. TERMINOLOOGILINE JÄRJEPIDEVUS (terminology)\n   - Sünonüümid sama mõiste jaoks (nt \"leping\" vs \"kokkulepe\").\n   - ULATUSE TÄPSUSTUSE KÕIKUMINE: sama põhitermin eri sätetes erineva kvalifikaatoriga, mis muudab ulatust (nt ühes \"summast\", teises \"osavusmängu summast\" — kas teine hõlmab kõiki summasid või ainult osavusmängu omasid?).\n   - Defineeritud terminit kasutatakse definitsioonist erinevas tähenduses.\n\n2. LOOGILISED VASTUOLUD (logical_contradiction)\n   - Kaks sätet kehtestavad vastandlikke nõudeid; tingimused pole samaaegselt täidetavad.\n\n3. TÄIELIKKUS (completeness)\n   - \"Ammendav\" loetelu lüngaga; tingimus tagajärjeta; erand baasreeglita.\n\n4. KEELELINE ÜHEMÕTTELISUS (linguistic_ambiguity)\n   - Asesõna/osutuse viiteobjekt pole ühene; sidendite ulatus (\"A ja B või C\") ebaselge.\n\nKui näed siiski ilmset viite-, numeratsiooni- või arvutusviga, võid selle samuti raporteerida (kategooriad: reference_integrity, structural_integrity, arithmetic, temporal).\n\nÄRA hinda poliitilisi valikuid ega eesmärkide otstarbekust. ÄRA analüüsi seletuskirja.\n\nIGA PROBLEEMI KOHTA tagasta objekt järgmiste väljadega:\n- \"category\": üks väärtustest [terminology, logical_contradiction, completeness, linguistic_ambiguity, reference_integrity, structural_integrity, arithmetic, temporal]\n- \"severity\": \"HIGH\" | \"MEDIUM\" | \"LOW\"\n    HIGH = muudab õiguslikku tähendust või takistab rakendamist\n    MEDIUM = tekitab tõlgendamisprobleeme\n    LOW = tehniline puudus, mis ei mõjuta sisu\n- \"provision_id\": eelnõu enda paragrahv, kus probleem avaldub, kujul \"§3\"\n- \"location\": inimloetav asukoht, nt \"§ 3 p 7\"\n- \"evidence_quote\": TÄPNE sõnasõnaline tekstilõik eelnõust (kopeeri täht-tähelt, et seda saaks tekstist üles leida). See on KOHUSTUSLIK.\n- \"title\": lühike pealkiri\n- \"description\": probleemi kirjeldus\n- \"reasoning\": miks see on probleem JA milline on praktiline tagajärg\n- \"suggestion\": konkreetne parandus\n- \"honte_rule\": milline Hea õigusloome ja normitehnika eeskirja (HÕNTE) nõue on riivatud, nt \"HÕNTE § 17 (terminite ühtne kasutamine)\" või \"HÕNTE § 28 (viitamine)\" (kui tead)\n\nVasta AINULT JSON-formaadis: {\"issues\": [ ... ]}. Kui probleeme ei ole: {\"issues\": []}.\nÄra lisa midagi muud peale JSON-i.",
+      "user_template": "Analüüsi järgmist seaduseelnõu.{structure_hint}\n\n=== EELNÕU TEKST ===\n{bill_text}",
+      "version": "ic-v1"
+    },
+    {
+      "description_en": "Each sub-consensus finding is challenged by an independent skeptic; refuted findings remain visible, marked.",
+      "description_et": "Iga alla täisnõusoleku leidu kontrollib sõltumatu skeptik; ümberlükatud leiud jäävad nähtavale märgistatuna.",
+      "enabled": true,
+      "id": "refute",
+      "kind": "per_finding",
+      "name_en": "Skeptic review",
+      "name_et": "Skeptiku kontroll",
+      "prompt_sha": "c4e125ec20eaae632550916de0acab1c25887bcb1708db4ae278e10a75cd4c8b",
+      "system_prompt": "Sa oled kogenud Eesti õigusloome toimetaja, kes kontrollib üle teise analüüsi leitud võimaliku vea. Sinu roll on SKEPTIK: otsi põhjendusi, miks leid VÕIB OLLA EKSLIK — kas väidetav viga on tegelikult taotluslik, mujal eelnõus selgitatud või normitehniliselt korrektne. Vasta AINULT JSON-objektiga kujul {\"verdict\": \"upheld\" või \"refuted\", \"reasoning\": \"<lühike eestikeelne põhjendus>\"}. Kasuta \"refuted\" AINULT siis, kui leiad eelnõu tekstist konkreetse põhjenduse, miks leid on ekslik; kahtluse korral vasta \"upheld\".",
+      "user_template": "EELNÕU TEKST:\n{bill_text}\n\nKONTROLLITAV LEID:\n{finding_json}\n\nKas see leid on tegelik viga (upheld) või ekslik (refuted)? Vasta ainult JSON-iga.",
+      "version": "rf-v1"
+    }
+  ],
+  "pipeline_order": [
+    "parse",
+    "deterministic",
+    "interpretive",
+    "cluster",
+    "dedup",
+    "refute",
+    "persist"
+  ]
+}

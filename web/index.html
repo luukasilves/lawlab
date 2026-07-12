@@ -1,157 +1,317 @@
 <!doctype html>
 <html lang="et">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Apsakaleidja — seaduseelnõu analüüs</title>
-<style>
-  :root{
-    --ink:#1a1a1a; --soft:#555; --muted:#888; --line:#e4e4e4; --bg:#fafaf8; --panel:#fff;
-    --high:#c0392b; --med:#c77d12; --low:#6b7280;
-    --high-bg:#fdecea; --med-bg:#fdf3e3; --low-bg:#f1f2f4;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);
-       font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif}
-  header{padding:20px 28px;border-bottom:1px solid var(--line);background:var(--panel)}
-  header h1{margin:0;font-size:19px;font-weight:650}
-  header .meta{color:var(--muted);font-size:13px;margin-top:4px}
-  .counts{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
-  .pill{font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line)}
-  .pill.high{color:var(--high);background:var(--high-bg);border-color:#f3c9c3}
-  .pill.med{color:var(--med);background:var(--med-bg);border-color:#f0dcb8}
-  .pill.low{color:var(--low);background:var(--low-bg)}
-  .layout{display:grid;grid-template-columns:1fr 400px;gap:0;height:calc(100vh - 92px)}
-  .doc{overflow:auto;padding:30px 40px;background:var(--panel);border-right:1px solid var(--line)}
-  .doc .text{white-space:pre-wrap;font-family:"Iowan Old Style",Georgia,"Times New Roman",serif;
-             font-size:15.5px;line-height:1.7;max-width:760px}
-  mark{border-radius:3px;padding:1px 2px;cursor:pointer;border-bottom:2px solid transparent}
-  mark.HIGH{background:var(--high-bg);border-bottom-color:var(--high)}
-  mark.MEDIUM{background:var(--med-bg);border-bottom-color:var(--med)}
-  mark.LOW{background:var(--low-bg);border-bottom-color:var(--low)}
-  mark.active{outline:2px solid #3367d6;outline-offset:1px}
-  .side{overflow:auto;padding:18px 20px;background:var(--bg)}
-  .side h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px;cursor:pointer}
-  .card:hover{border-color:#cfcfcf}
-  .card.active{border-color:#3367d6;box-shadow:0 0 0 1px #3367d6}
-  .card .row{display:flex;align-items:center;gap:8px;margin-bottom:4px}
-  .sev{font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px}
-  .sev.HIGH{color:#fff;background:var(--high)} .sev.MEDIUM{color:#fff;background:var(--med)} .sev.LOW{color:#fff;background:var(--low)}
-  .conf{font-size:12px;color:var(--soft)}
-  .src{font-size:11px;color:var(--muted);margin-left:auto}
-  .card .title{font-weight:600;font-size:14px}
-  .card .loc{font-size:12px;color:var(--muted);margin-top:2px}
-  .detail{font-size:13.5px;color:var(--soft);margin-top:8px;display:none}
-  .card.active .detail{display:block}
-  .detail b{color:var(--ink)}
-  .detail .ev{font-family:Georgia,serif;background:#fbfaf6;border-left:3px solid #ddd;padding:6px 10px;margin:8px 0;font-size:13px}
-  .detail .honte{display:inline-block;font-size:11.5px;color:#3a5; background:#eef7f0;border:1px solid #cfe6d4;border-radius:4px;padding:2px 7px;margin-top:6px}
-  .fb{margin-top:10px;display:flex;gap:8px}
-  .fb button{font:inherit;font-size:12px;padding:4px 10px;border-radius:6px;border:1px solid var(--line);background:#fff;cursor:pointer}
-  .fb button.ok:hover{border-color:#3a5;color:#2a7} .fb button.no:hover{border-color:var(--high);color:var(--high)}
-  .fb .done{font-size:12px;color:var(--muted);align-self:center}
-  .note{font-size:12px;color:var(--muted);margin:14px 0 4px}
-  .empty{color:var(--muted);padding:20px}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Apsakaleidja</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <style>
+    :root {
+      --index-bg: #f7f8f5;
+      --index-panel: #fff;
+      --index-ink: #202124;
+      --index-muted: #667085;
+      --index-line: #d9ded6;
+      --index-high: #b42318;
+      --index-med: #b54708;
+      --index-low: #475467;
+      --index-green: #087443;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--index-bg);
+      color: var(--index-ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .index-dashboard {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 24px 0 40px;
+    }
+
+    .index-top {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+
+    .index-top h1 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .freshness-line {
+      color: var(--index-muted);
+      font-size: 13px;
+    }
+
+    .banner-stale {
+      width: fit-content;
+      max-width: 100%;
+      border: 1px solid #fedf89;
+      background: #fffaeb;
+      color: #93370d;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 13px;
+    }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .stat-card {
+      min-height: 86px;
+      border: 1px solid var(--index-line);
+      border-radius: 8px;
+      background: var(--index-panel);
+      color: inherit;
+      text-align: left;
+      padding: 14px;
+      cursor: pointer;
+    }
+
+    .stat-card.active {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 1px #2563eb inset;
+    }
+
+    .stat-value {
+      display: block;
+      font-size: 28px;
+      line-height: 1.1;
+      font-weight: 700;
+    }
+
+    .stat-label {
+      display: block;
+      margin-top: 8px;
+      color: var(--index-muted);
+      font-size: 13px;
+    }
+
+    .index-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .index-controls input,
+    .index-controls select {
+      min-height: 40px;
+      border: 1px solid var(--index-line);
+      border-radius: 6px;
+      background: #fff;
+      color: inherit;
+      font: inherit;
+      padding: 0 10px;
+    }
+
+    .index-controls input {
+      flex: 1 1 340px;
+      min-width: 0;
+    }
+
+    .index-controls select {
+      flex: 0 0 210px;
+    }
+
+    .table-wrap {
+      border: 1px solid var(--index-line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--index-panel);
+    }
+
+    .index-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .index-table th,
+    .index-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--index-line);
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    .index-table th {
+      color: var(--index-muted);
+      font-size: 12px;
+      font-weight: 650;
+      text-transform: uppercase;
+    }
+
+    .index-table tbody tr {
+      cursor: pointer;
+    }
+
+    .index-table tbody tr:hover {
+      background: #f9fafb;
+    }
+
+    .index-table a {
+      color: inherit;
+      text-decoration: none;
+      font-weight: 650;
+    }
+
+    .muted {
+      color: var(--index-muted);
+    }
+
+    .zero-findings {
+      color: var(--index-green);
+      font-weight: 650;
+    }
+
+    .finding-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .chip {
+      display: inline-flex;
+      min-width: 28px;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .chip.high {
+      background: #fee4e2;
+      color: var(--index-high);
+    }
+
+    .chip.med {
+      background: #fef0c7;
+      color: var(--index-med);
+    }
+
+    .chip.low {
+      background: #f2f4f7;
+      color: var(--index-low);
+    }
+
+    .empty-state {
+      display: grid;
+      min-height: 180px;
+      place-items: center;
+      color: var(--index-muted);
+      text-align: center;
+      padding: 24px;
+    }
+
+    .pagination {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      border-top: 1px solid var(--index-line);
+      padding: 10px 12px;
+      background: #fbfcfa;
+    }
+
+    .pagination button {
+      min-width: 34px;
+      min-height: 34px;
+      border: 1px solid var(--index-line);
+      border-radius: 6px;
+      background: #fff;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .pagination button.active {
+      border-color: #2563eb;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-weight: 700;
+    }
+
+    [hidden] { display: none !important; }
+
+    @media (max-width: 760px) {
+      .index-dashboard {
+        width: min(100% - 20px, 1180px);
+        padding-top: 16px;
+      }
+
+      .stat-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .index-controls {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .index-controls select {
+        flex-basis: auto;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+      }
+
+      .index-table {
+        min-width: 720px;
+      }
+    }
+  </style>
 </head>
 <body>
-<header>
-  <h1 id="title">Apsakaleidja</h1>
-  <div class="meta" id="meta"></div>
-  <div class="counts" id="counts"></div>
-</header>
-<div class="layout">
-  <div class="doc"><div class="text" id="text"></div></div>
-  <div class="side">
-    <h2>Leiud <span id="fcount"></span></h2>
-    <div class="note" id="framing"></div>
-    <div id="list"></div>
-  </div>
-</div>
-<script>
-const SEV_RANK={HIGH:3,MEDIUM:2,LOW:1};
-const CAT_ET={reference_integrity:"Viiteterviklus",structural_integrity:"Struktuuriterviklus",
-  arithmetic:"Arvutuslik õigsus",temporal:"Ajaline loogika",terminology:"Terminoloogiline järjepidevus",
-  logical_contradiction:"Loogiline vastuolu",completeness:"Täielikkus",linguistic_ambiguity:"Keeleline ühemõttelisus"};
-function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+  <div id="app-shell-header"></div>
 
-function render(data){
-  document.getElementById("title").textContent = data.title || "Apsakaleidja";
-  const cfg=data.config||{};
-  document.getElementById("meta").textContent =
-    `${data.bill_number?("Eelnõu "+data.bill_number+" · "):""}mudel ${data.model||"?"} · prompt ${data.prompt_version||"?"}`;
-  const fs=(data.findings||[]).slice().sort((a,b)=>
-    (SEV_RANK[b.severity]-SEV_RANK[a.severity])||((b.confidence||0)-(a.confidence||0))||(a.char_start-b.char_start));
+  <main id="lawlab-index" class="index-dashboard">
+    <header class="index-top">
+      <h1>Apsakaleidja</h1>
+      <div id="freshness-line" class="freshness-line"></div>
+      <div id="stale-banner" class="banner-stale" hidden></div>
+    </header>
 
-  // counts
-  const c={HIGH:0,MEDIUM:0,LOW:0}; fs.forEach(f=>c[f.severity]++);
-  document.getElementById("counts").innerHTML =
-    `<span class="pill high">${c.HIGH} kõrge</span><span class="pill med">${c.MEDIUM} keskmine</span><span class="pill low">${c.LOW} madal</span>`;
-  document.getElementById("fcount").textContent = `(${fs.length})`;
-  const n=cfg.samples||5;
-  document.getElementById("framing").textContent =
-    `Kuvatakse ainult püsivad leiud (esinevad ≥${cfg.k||3}/${n} sõltumatus analüüsis). Usaldusväärsus = kokkulangevus.`;
+    <section id="stat-cards" class="stat-grid"></section>
 
-  // highlighted document
-  const text=data.text||""; let cursor=0, html="";
-  fs.map((f,i)=>({f,i})).sort((a,b)=>a.f.char_start-b.f.char_start).forEach(({f,i})=>{
-    if(f.char_start<cursor||f.char_start==null) return;       // skip overlaps
-    html+=esc(text.slice(cursor,f.char_start));
-    html+=`<mark class="${f.severity}" data-id="${i}" id="mark-${i}">`+esc(text.slice(f.char_start,f.char_end))+`</mark>`;
-    cursor=f.char_end;
-  });
-  html+=esc(text.slice(cursor));
-  document.getElementById("text").innerHTML=html;
+    <section class="index-controls">
+      <input id="index-search" type="search" autocomplete="off">
+      <select id="status-filter"></select>
+    </section>
 
-  // findings list
-  const list=document.getElementById("list");
-  list.innerHTML = fs.length? "" : `<div class="empty">Püsivaid leide ei tuvastatud.</div>`;
-  fs.forEach((f,i)=>{
-    const conf=Math.round((f.confidence||0)*100);
-    const runs=f.runs_total?` ${f.runs_found}/${f.runs_total}`:"";
-    const card=document.createElement("div"); card.className="card"; card.id="card-"+i;
-    card.innerHTML=`
-      <div class="row">
-        <span class="sev ${f.severity}">${f.severity}</span>
-        <span class="conf">${conf}%${runs}</span>
-        <span class="src">${f.source==="deterministic"?"reegel":"mudel"}</span>
-      </div>
-      <div class="title">${esc(f.title||"")}</div>
-      <div class="loc">${esc(f.location||f.provision_id||"")} · ${esc(CAT_ET[f.category]||f.category)}</div>
-      <div class="detail">
-        <p>${esc(f.description||"")}</p>
-        ${f.reasoning?`<p><b>Põhjendus:</b> ${esc(f.reasoning)}</p>`:""}
-        ${f.suggestion?`<p><b>Soovitus:</b> ${esc(f.suggestion)}</p>`:""}
-        <div class="ev">${esc((f.evidence_quote||"").trim())}</div>
-        ${f.honte_rule?`<span class="honte">${esc(f.honte_rule)}</span>`:""}
-        <div class="fb">
-          <button class="ok" data-v="confirm">✓ Kinnita</button>
-          <button class="no" data-v="dismiss">✕ Lükka tagasi</button>
-          <span class="done"></span>
-        </div>
-      </div>`;
-    card.addEventListener("click",e=>{ if(e.target.tagName==="BUTTON")return; select(i); });
-    card.querySelectorAll(".fb button").forEach(b=>b.addEventListener("click",()=>feedback(i,b.dataset.v,card)));
-    list.appendChild(card);
-  });
-  window.__fs=fs;
-}
-function select(i){
-  document.querySelectorAll(".card.active,mark.active").forEach(e=>e.classList.remove("active"));
-  const card=document.getElementById("card-"+i), mark=document.getElementById("mark-"+i);
-  if(card){card.classList.add("active");card.scrollIntoView({block:"nearest",behavior:"smooth"});}
-  if(mark){mark.classList.add("active");mark.scrollIntoView({block:"center",behavior:"smooth"});}
-}
-function feedback(i,verdict,card){
-  // In production: POST to Supabase `feedback` (finding_id, verdict). Here: record locally.
-  card.querySelector(".done").textContent = verdict==="confirm"?"märgitud: kinnitatud":"märgitud: tagasi lükatud";
-}
-document.addEventListener("click",e=>{ const m=e.target.closest("mark"); if(m) select(+m.dataset.id); });
+    <section class="table-wrap">
+      <table id="bill-table" class="index-table">
+        <thead>
+          <tr>
+            <th data-column="number"></th>
+            <th data-column="title"></th>
+            <th data-column="status"></th>
+            <th data-column="changed"></th>
+            <th data-column="findings"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="empty-state" class="empty-state" hidden></div>
+      <nav id="pagination" class="pagination" hidden></nav>
+    </section>
+  </main>
 
-fetch("demo_data.json").then(r=>r.json()).then(render).catch(e=>{
-  document.getElementById("text").innerHTML=`<div class="empty">Lae andmed: käivita <code>python3 -m web.export_demo &lt;bill.txt&gt; &lt;nr&gt;</code> ja serveeri kausta (<code>python3 -m http.server</code>).<br><br>${e}</div>`;
-});
-</script>
+  <div id="app-shell-footer"></div>
+
+  <script type="module" src="/js/index.js"></script>
 </body>
 </html>

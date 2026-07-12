@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="et">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shell Test</title>
+  <link rel="stylesheet" href="../css/app.css">
+</head>
+<body>
+  <div id="app-header"></div>
+  <main class="container">
+    <h1>Shell Test</h1>
+    <div id="results"></div>
+  </main>
+  <div id="app-footer"></div>
+
+  <script>
+    window.__LAWLAB_TEST__ = true;
+    window.__fetchCalls = [];
+    window.fetch = async function(url, options) {
+      window.__fetchCalls.push({ url: String(url), options: options || {} });
+      return new Response('[]', {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    };
+  </script>
+  <script src="../config.js"></script>
+  <script type="module">
+    import { t, setLang } from '../js/i18n.js';
+    import { renderHeader, renderFooter } from '../js/shell.js';
+    import { postFeedback } from '../js/api.js';
+
+    const results = document.querySelector('#results');
+    let failed = false;
+
+    function assert(name, condition, reason) {
+      const row = document.createElement('div');
+      row.className = 'assert';
+      row.dataset.name = name;
+      if (condition) {
+        row.textContent = 'PASS';
+      } else {
+        failed = true;
+        row.textContent = `FAIL ${reason || ''}`.trim();
+      }
+      results.appendChild(row);
+    }
+
+    try {
+      setLang('et');
+      renderHeader('bills');
+      renderFooter('2026-07-12T10:00:00Z');
+      assert('header-renders', document.querySelector('.wordmark')?.textContent === 'Apsakaleidja', 'wordmark missing');
+    } catch (error) {
+      assert('header-renders', false, error.message);
+    }
+
+    try {
+      setLang('et');
+      assert('i18n-et', t('status_IN_PROCESS') === 'Menetluses', `got ${t('status_IN_PROCESS')}`);
+    } catch (error) {
+      assert('i18n-et', false, error.message);
+    }
+
+    try {
+      setLang('en');
+      assert('i18n-en', t('th_title') === 'Title', `got ${t('th_title')}`);
+    } catch (error) {
+      assert('i18n-en', false, error.message);
+    }
+
+    try {
+      await postFeedback('f-1', 'confirm');
+      const call = window.__fetchCalls.at(-1);
+      const body = JSON.parse(call.options.body);
+      assert(
+        'feedback-post',
+        call.url.includes('/rest/v1/feedback') &&
+          call.options.headers.Prefer === 'return=minimal' &&
+          body.finding_id === 'f-1',
+        'feedback request mismatch'
+      );
+    } catch (error) {
+      assert('feedback-post', false, error.message);
+    }
+
+    if (!failed) {
+      const marker = document.createElement('div');
+      marker.id = 'test-result';
+      marker.textContent = 'ALL-PASS';
+      results.appendChild(marker);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="et">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apsakaleidja — metoodika</title>
+<style>
+  :root{
+    --ink:#161616; --soft:#4e5560; --muted:#747b86; --line:#deded8; --bg:#f7f7f3; --panel:#fff;
+    --accent:#255f85; --accent-soft:#e8f1f5; --ok:#2f7a4f; --disabled:#8a8f98;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif}
+  a{color:var(--accent)}
+  .topbar{border-bottom:1px solid var(--line);background:var(--panel)}
+  .topbar-inner{max-width:1120px;margin:0 auto;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:18px}
+  .brand{font-weight:700;text-decoration:none;color:var(--ink)}
+  .repo-link{font-size:13px}
+  main{max-width:1120px;margin:0 auto;padding:26px 24px 54px}
+  .hero{padding:18px 0 22px;border-bottom:1px solid var(--line)}
+  h1{font-size:30px;line-height:1.15;margin:0 0 12px;letter-spacing:0}
+  .intro{max-width:780px;color:var(--soft);font-size:16px;margin:0}
+  .engine{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:10px;margin-top:18px;max-width:900px}
+  .metric{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px 11px}
+  .metric b{display:block;font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+  .metric span{display:block;margin-top:2px;font-weight:650;overflow-wrap:anywhere}
+  section{padding:28px 0;border-bottom:1px solid var(--line)}
+  section:last-child{border-bottom:0}
+  h2{font-size:21px;line-height:1.25;margin:0 0 14px}
+  h3{font-size:15px;margin:0 0 8px}
+  .pipeline{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin-top:16px}
+  .step{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;min-height:120px}
+  .step .idx{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700}
+  .step strong{display:block;margin:9px 0 5px;font-size:14px}
+  .step p{margin:0;color:var(--soft);font-size:13px;line-height:1.4}
+  table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  th{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;background:#fbfbf8}
+  tr:last-child td{border-bottom:0}
+  tr.disabled{color:var(--disabled);background:#f1f1ee}
+  .status{display:inline-block;border:1px solid #bfd9c9;background:#edf7f1;color:var(--ok);border-radius:999px;padding:2px 8px;font-size:12px;white-space:nowrap}
+  .status.off{border-color:#d6d6d2;background:#f3f3f0;color:var(--disabled)}
+  .passes{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .pass-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
+  .pass-meta{color:var(--muted);font-size:13px;margin:4px 0 10px}
+  details{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:10px}
+  .pass-card details{background:#fbfbf8}
+  summary{cursor:pointer;font-weight:650}
+  pre{white-space:pre-wrap;overflow:auto;background:#f3f4f2;border:1px solid #dfdfda;border-radius:6px;padding:10px;font:12.5px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;color:#222}
+  .rules{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+  .limitations{margin:0;padding-left:22px;max-width:820px}
+  .limitations li{margin:6px 0}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0 16px}
+  code.chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:3px 8px;font-size:12px}
+  .curl-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px}
+  .curl-grid pre{margin:0;min-height:132px}
+  .api-note,.gold-note{color:var(--soft);max-width:800px}
+  .empty,.error{padding:16px;border:1px solid var(--line);background:var(--panel);border-radius:8px;color:var(--soft)}
+  @media (max-width:900px){
+    .engine,.pipeline,.passes,.rules,.curl-grid{grid-template-columns:1fr}
+    .step{min-height:auto}
+    th:nth-child(2),td:nth-child(2){min-width:260px}
+    .table-wrap{overflow:auto}
+  }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="./index.html">Apsakaleidja</a>
+    <a class="repo-link" href="https://github.com/luukasilves/lawlab">GitHub</a>
+  </div>
+</div>
+<main id="metoodika-root" aria-live="polite">
+  <div class="empty">Laen metoodikat...</div>
+</main>
+<script type="module" src="./js/metoodika.js"></script>
+</body>
+</html>

@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="et">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Apsakaleidja index test</title>
+  <script>
+    window.__LAWLAB_TEST__ = true;
+  </script>
+  <script type="importmap">
+    {
+      "imports": {
+        "/js/api.js": "./stubs/api.js",
+        "/js/i18n.js": "./stubs/i18n.js",
+        "/js/shell.js": "./stubs/shell.js"
+      }
+    }
+  </script>
+  <style>
+    .assert { font: 13px/1.4 monospace; }
+    .assert.fail { color: #b42318; }
+  </style>
+</head>
+<body>
+  <div id="app-shell-header"></div>
+
+  <main id="lawlab-index" class="index-dashboard">
+    <header class="index-top">
+      <h1>Apsakaleidja</h1>
+      <div id="freshness-line" class="freshness-line"></div>
+      <div id="stale-banner" class="banner-stale" hidden></div>
+    </header>
+
+    <section id="stat-cards" class="stat-grid"></section>
+
+    <section class="index-controls">
+      <input id="index-search" type="search" autocomplete="off">
+      <select id="status-filter"></select>
+    </section>
+
+    <section class="table-wrap">
+      <table id="bill-table" class="index-table">
+        <thead>
+          <tr>
+            <th data-column="number"></th>
+            <th data-column="title"></th>
+            <th data-column="status"></th>
+            <th data-column="changed"></th>
+            <th data-column="findings"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="empty-state" class="empty-state" hidden></div>
+      <nav id="pagination" class="pagination" hidden></nav>
+    </section>
+  </main>
+
+  <div id="app-shell-footer"></div>
+
+  <section id="assertions"></section>
+  <div id="test-result"></div>
+
+  <script type="module">
+    import { STRINGS } from "/js/i18n.js";
+    import "../js/index.js";
+
+    const hour = 60 * 60 * 1000;
+    const baseTime = Date.parse("2026-07-10T12:00:00.000Z");
+
+    function iso(offsetHours) {
+      return new Date(baseTime - offsetHours * hour).toISOString();
+    }
+
+    function makeRow(index, overrides = {}) {
+      return {
+        bill_id: `bill-${index}`,
+        bill_number: `EELN-${String(index).padStart(3, "0")}`,
+        title: `Tavaline eelnõu ${index}`,
+        status: index % 5 === 0 ? null : (index % 2 === 0 ? "PROCESSED" : "IN_PROCESS"),
+        last_seen_at: iso(index + 1),
+        document_id: `doc-${index}`,
+        doc_version: 1,
+        doc_fetched_at: iso(index),
+        text_length: 2000 + index,
+        extraction_method: "html",
+        analysis_id: `analysis-${index}`,
+        analyzed_at: iso(index - 0.5),
+        prompt_version: "p-test",
+        model: "gpt-test",
+        high_count: 0,
+        medium_count: 0,
+        low_count: 0,
+        refuted_count: 0,
+        ...overrides,
+      };
+    }
+
+    const FIXTURE_ROWS = Array.from({ length: 30 }, (_, index) => makeRow(index + 1));
+
+    Object.assign(FIXTURE_ROWS[0], {
+      title: "Kõrge mõjuga andmekogu muudatus",
+      high_count: 1,
+      medium_count: 2,
+    });
+    Object.assign(FIXTURE_ROWS[9], {
+      title: "Kõrge mõjuga menetlustähtaja muudatus",
+      high_count: 2,
+      low_count: 1,
+    });
+    Object.assign(FIXTURE_ROWS[19], {
+      title: "Kõrge mõjuga aruandluse muudatus",
+      high_count: 1,
+    });
+    Object.assign(FIXTURE_ROWS[3], {
+      title: "Analüüsimata eelnõu neljas",
+      analysis_id: null,
+      analyzed_at: null,
+    });
+    Object.assign(FIXTURE_ROWS[7], {
+      title: "Analüüsimata eelnõu kaheksas",
+      analysis_id: null,
+      analyzed_at: null,
+    });
+    Object.assign(FIXTURE_ROWS[11], {
+      title: "Tekstita menetlus esimene",
+      document_id: null,
+      analysis_id: null,
+      analyzed_at: null,
+    });
+    Object.assign(FIXTURE_ROWS[15], {
+      title: "Tekstita menetlus teine",
+      document_id: null,
+      analysis_id: null,
+      analyzed_at: null,
+    });
+    Object.assign(FIXTURE_ROWS[5], {
+      title: "Refuteeritud leidudega kontrollrida",
+      medium_count: 1,
+      refuted_count: 3,
+    });
+    Object.assign(FIXTURE_ROWS[6], {
+      title: "Unikaalne otsingupealkiri kohaliku teenuse kohta",
+      low_count: 2,
+    });
+
+    const FIXTURE_INGEST = [{
+      finished_at: new Date(Date.now() - 50 * hour).toISOString(),
+      stats: { rows: FIXTURE_ROWS.length },
+    }];
+
+    window.__LAWLAB_INDEX_FIXTURE__ = FIXTURE_ROWS;
+    window.__LAWLAB_INGEST_FIXTURE__ = FIXTURE_INGEST;
+
+    window.LawlabIndex.init(FIXTURE_ROWS, FIXTURE_INGEST);
+
+    const assertions = [];
+    const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+    const visibleRows = () => Array.from(document.querySelectorAll("#bill-table tbody tr"));
+    const card = (name) => document.querySelector(`[data-filter-card="${name}"]`);
+    const search = document.getElementById("index-search");
+    const status = document.getElementById("status-filter");
+
+    function appendAssert(name, passed, detail = "") {
+      assertions.push(passed);
+      const div = document.createElement("div");
+      div.className = `assert${passed ? "" : " fail"}`;
+      div.dataset.name = name;
+      div.textContent = `${name}: ${passed ? "PASS" : "FAIL"}${detail ? ` ${detail}` : ""}`;
+      document.getElementById("assertions").appendChild(div);
+    }
+
+    async function resetFilters() {
+      card("total").click();
+      search.value = "";
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+      status.value = "all";
+      status.dispatchEvent(new Event("change", { bubbles: true }));
+      await wait(SEARCH_DELAY_MS + 30);
+    }
+
+    const SEARCH_DELAY_MS = 150;
+
+    function runStatCounts() {
+      const expected = {
+        total: FIXTURE_ROWS.length,
+        analyzed: FIXTURE_ROWS.filter((row) => row.analysis_id != null).length,
+        high: FIXTURE_ROWS.filter((row) => Number(row.high_count) > 0).length,
+        findings: FIXTURE_ROWS.reduce((sum, row) => sum + Number(row.high_count || 0) + Number(row.medium_count || 0) + Number(row.low_count || 0), 0),
+      };
+      const actual = Object.fromEntries(["total", "analyzed", "high", "findings"].map((name) => [
+        name,
+        Number(card(name).querySelector(".stat-value").textContent),
+      ]));
+      appendAssert("stat-counts", JSON.stringify(actual) === JSON.stringify(expected), `${JSON.stringify(actual)} expected ${JSON.stringify(expected)}`);
+    }
+
+    function runCardFilter() {
+      card("high").click();
+      appendAssert("card-filter", visibleRows().length === 3, `rows=${visibleRows().length}`);
+    }
+
+    async function runSearchFilter() {
+      await resetFilters();
+      search.value = "otsingupealkiri";
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+      await wait(SEARCH_DELAY_MS + 30);
+      const rows = visibleRows();
+      appendAssert("search-filter", rows.length === 1 && rows[0].textContent.includes("Unikaalne otsingupealkiri"), `rows=${rows.length}`);
+    }
+
+    async function runStatusFilter() {
+      await resetFilters();
+      status.value = "PROCESSED";
+      status.dispatchEvent(new Event("change", { bubbles: true }));
+      const rows = visibleRows();
+      const expected = FIXTURE_ROWS.filter((row) => row.status === "PROCESSED").length;
+      appendAssert("status-filter", rows.length === expected && rows.every((row) => row.dataset.status === "PROCESSED"), `rows=${rows.length} expected=${expected}`);
+    }
+
+    function runStaleBanner() {
+      const banner = document.querySelector(".banner-stale");
+      appendAssert("stale-banner", !!banner && !banner.hidden && banner.textContent.includes(STRINGS.fresh_stale), banner?.textContent || "");
+    }
+
+    async function runNoTextState() {
+      await resetFilters();
+      search.value = "Tekstita menetlus esimene";
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+      await wait(SEARCH_DELAY_MS + 30);
+      const noText = document.querySelector(".no-text");
+      appendAssert("no-text-state", noText?.textContent === STRINGS.no_text, noText?.textContent || "");
+    }
+
+    async function runPagination() {
+      await resetFilters();
+      const pageTwo = document.querySelector('#pagination button[data-page="2"]');
+      const firstPageCount = visibleRows().length;
+      pageTwo?.click();
+      const secondPageCount = visibleRows().length;
+      appendAssert("pagination", !!pageTwo && firstPageCount === 25 && secondPageCount === 5, `first=${firstPageCount} second=${secondPageCount}`);
+    }
+
+    runStatCounts();
+    runCardFilter();
+    await runSearchFilter();
+    await runStatusFilter();
+    runStaleBanner();
+    await runNoTextState();
+    await runPagination();
+
+    document.getElementById("test-result").textContent = assertions.every(Boolean) ? "ALL-PASS" : "FAIL";
+  </script>
+</body>
+</html>

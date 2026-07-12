@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="et">
+<head>
+<meta charset="utf-8">
+<title>metoodika test</title>
+<script type="importmap">
+{
+  "imports": {
+    "i18n": "./stubs-met/i18n.js",
+    "shell": "./stubs-met/shell.js"
+  }
+}
+</script>
+</head>
+<body>
+<main id="metoodika-root"></main>
+<pre id="test-result">RUNNING</pre>
+<script>
+const realFetch = window.fetch.bind(window);
+window.__fixturePromise = realFetch("../data/methodology.json").then((response) => response.json());
+window.fetch = async (resource, init) => {
+  const url = typeof resource === "string" ? resource : resource.url;
+  if (url && url.endsWith("/data/methodology.json")) {
+    const fixture = await window.__fixturePromise;
+    return new Response(JSON.stringify(fixture), {
+      headers: { "Content-Type": "application/json" },
+      status: 200
+    });
+  }
+  return realFetch(resource, init);
+};
+</script>
+<script type="module">
+import { setLang } from "i18n";
+import "../js/metoodika.js";
+
+const result = document.getElementById("test-result");
+
+function assert(condition, name) {
+  if (!condition) throw new Error(name);
+}
+
+function text(selector) {
+  return Array.from(document.querySelectorAll(selector)).map((node) => node.textContent).join("\n");
+}
+
+async function run() {
+  const fixture = await window.__fixturePromise;
+  await window.LawlabMetoodika.ready;
+  setLang("et");
+  window.LawlabMetoodika.init(fixture);
+
+  const checksText = text("#checks-table tbody");
+  const etCheckNames = ["Paragrahvide numeratsioon", "Muutmispunktide numeratsioon", "Jõustumissätte viited", "Protsendijaotuste aritmeetika"];
+  assert(etCheckNames.every((name) => checksText.includes(name)), "checks-table");
+
+  assert(
+    document.querySelector('.prompt-detail[data-pass-id="interpretive"] .system-prompt').textContent.includes("GENERATED-AT-INTEGRATION") &&
+      document.querySelector('.prompt-detail[data-pass-id="refute"] .system-prompt').textContent.includes("GENERATED-AT-INTEGRATION"),
+    "prompts-visible"
+  );
+
+  const categoryRows = document.querySelectorAll("#categories-table tbody tr");
+  assert(categoryRows.length === 8 && Array.from(categoryRows).every((row) => row.textContent.includes("HÕNTE")), "categories-honte");
+
+  assert(document.querySelectorAll(".limitations li").length === 4, "limitations");
+
+  const andmed = document.getElementById("andmed");
+  assert(
+    andmed &&
+      andmed.querySelectorAll(".curl-example").length === 3 &&
+      andmed.querySelector('a[href="https://github.com/luukasilves/lawlab"]'),
+    "andmed-section"
+  );
+
+  setLang("en");
+  window.LawlabMetoodika.init(fixture);
+  const enChecks = text("#checks-table tbody");
+  const enCheckNames = ["Section numbering", "Amendment instruction numbering", "Entry-into-force references", "Percentage allocation arithmetic"];
+  assert(enCheckNames.every((name) => enChecks.includes(name)), "lang-en");
+
+  result.textContent = "ALL-PASS";
+}
+
+run().catch((error) => {
+  result.textContent = `FAIL ${error.stack || error.message || error}`;
+});
+</script>
+</body>
+</html>

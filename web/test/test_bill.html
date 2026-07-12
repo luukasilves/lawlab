@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="et">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bill detail harness</title>
+<script type="importmap">
+{
+  "imports": {
+    "api.js": "./stubs-bill/api.js",
+    "i18n.js": "./stubs-bill/i18n.js"
+  }
+}
+</script>
+<style>
+  body { font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 16px; }
+  #test-result { border: 1px solid #ccc; margin-bottom: 12px; padding: 8px; }
+  #test-result.pass { border-color: #26734d; color: #26734d; }
+  #test-result.fail { border-color: #a33; color: #a33; }
+  .page-header { border-bottom: 1px solid #ddd; margin-bottom: 12px; padding-bottom: 12px; }
+  .meta-grid { display: flex; gap: 8px; }
+  .two-pane { display: grid; grid-template-columns: 1fr 430px; gap: 16px; }
+  .doc-text { white-space: pre-wrap; }
+  mark.HIGH { background: #fdebea; }
+  mark.MEDIUM { background: #fff3dd; }
+  mark.LOW { background: #eef1f4; }
+</style>
+</head>
+<body>
+<div id="test-result">RUNNING</div>
+<header class="page-header">
+  <div class="topline">
+    <a id="backLink" href="/"></a>
+    <a id="riigikoguLink" hidden></a>
+  </div>
+  <h1 id="billTitle"></h1>
+  <div id="metaGrid" class="meta-grid"></div>
+</header>
+<main id="billApp" class="two-pane">
+  <section class="doc-pane">
+    <div id="docText" class="doc-text"></div>
+  </section>
+  <aside class="side-pane">
+    <div class="section-title">
+      <h2 id="resultsTitle"></h2>
+      <span id="resultsCount"></span>
+    </div>
+    <div id="findingsList"></div>
+    <div id="refutedSection"></div>
+    <div id="pipelinePanel"></div>
+    <div id="historyPanel"></div>
+    <div id="rawJsonPanel"></div>
+  </aside>
+</main>
+
+<script type="module">
+window.__LAWLAB_TEST__ = true;
+window.__postFeedbackCalls = [];
+
+const parsedText = [
+  "Seaduseelnõu eesmärk on täpsustada menetluse korda ning parandada viidete kooskõla. Juhtivkomisjon märgib, et sama mõistet kasutatakse eelnõu eri osades ühtselt, kuid rakendussätetes on vaja säilitada selge piir.",
+  "Paragrahvis 2 kirjeldatakse loa andmise aluseid, kontrolli ulatust ja aruannete esitamise tähtaegu. Sama lõike lõpus korratakse tingimust, mille tähendus sõltub eelmises lauses kasutatud viitest.",
+  "Seletuskiri lisab, et muudatus ei loo uut kohustust, kuid normitekstis on sõnastus laiem. Komisjoni seletuse järgi tuleb andmed esitada seitse päeva pärast nõude saamist.",
+  "Rakendussätetes kirjeldatakse jõustumist, seoseid teiste seadustega ja andmete avaldamise korda."
+].join("\n\n");
+
+const analysis = {
+  id: "analysis-current",
+  doc_version: "v1",
+  prompt_version: "prompt-v3",
+  checker_version: "checker-v2",
+  model: "test-model",
+  provider: "test-provider",
+  duration_ms: 12450,
+  input_tokens: 2200,
+  output_tokens: 900,
+  cost_usd: 0.1234,
+  engine: {
+    provider: "test-provider",
+    model: "test-model",
+    params: { samples: 5, k: 3, temperature: 0.4 },
+    checks: [["deterministic-structural", "1.2"]],
+    passes: [["interpretive", "1.0", "sha-a"], ["refute", "1.0", "sha-b"]]
+  },
+  stats: {
+    llm: {
+      clusters: [
+        { title: "Korduv vastuolu", category: "logical_contradiction", support: 5, n: 5, kept: true, members: ["B"] },
+        { title: "Alla läve klaster", category: "terminology", support: 2, n: 5, kept: false, members: ["x", "y"] }
+      ]
+    },
+    refute: { judged: 4, refuted: 1 }
+  },
+  findings: [
+    {
+      id: "A",
+      source: "deterministic",
+      check_id: "deterministic-structural",
+      category: "structural_integrity",
+      severity: "HIGH",
+      confidence: 0.98,
+      provision_id: "§ 1",
+      location: "§ 1 lõige 1",
+      evidence_quote: parsedText.slice(50, 120),
+      char_start: 50,
+      char_end: 120,
+      title: "Deterministlik kattuv leid",
+      description: "Tekstilõigus on struktuurne ebakõla.",
+      reasoning: "Reegel leidis vastuolu viite ja lõike vahel.",
+      suggestion: "Täpsustada viide.",
+      honte_rule: "HÕNTE § 16",
+      skeptic_verdict: "not_checked",
+      skeptic_reasoning: ""
+    },
+    {
+      id: "B",
+      source: "llm",
+      check_id: "interpretive",
+      category: "logical_contradiction",
+      severity: "MEDIUM",
+      confidence: 0.8,
+      runs_found: 4,
+      runs_total: 5,
+      provision_id: "§ 2",
+      location: "§ 2 lõige 3",
+      evidence_quote: parsedText.slice(100, 180),
+      char_start: 100,
+      char_end: 180,
+      title: "Mudeli kattuv leid",
+      description: "Tõlgenduslik kontroll leidis võimaliku vastuolu.",
+      reasoning: "Neljas valimis viiest jäi sama lõik esile.",
+      suggestion: "Ühtlustada sõnastus.",
+      honte_rule: "HÕNTE § 17",
+      skeptic_verdict: "upheld",
+      skeptic_reasoning: "Skeptik nõustus, et leid on tekstiga seotud."
+    },
+    {
+      id: "C",
+      source: "llm",
+      check_id: "interpretive",
+      category: "linguistic_ambiguity",
+      severity: "LOW",
+      confidence: 0.62,
+      runs_found: 3,
+      runs_total: 5,
+      provision_id: "§ 1",
+      location: "§ 1 lõige 1",
+      evidence_quote: parsedText.slice(60, 90),
+      char_start: 60,
+      char_end: 90,
+      title: "Täielikult pesastatud leid",
+      description: "See leid on täielikult A sees.",
+      reasoning: "Piirid asuvad suurema leiu sees.",
+      suggestion: "Kontrollida terminit.",
+      honte_rule: "HÕNTE § 15",
+      skeptic_verdict: "not_checked",
+      skeptic_reasoning: ""
+    },
+    {
+      id: "D",
+      source: "llm",
+      check_id: "interpretive",
+      category: "terminology",
+      severity: "LOW",
+      confidence: 0.55,
+      runs_found: 3,
+      runs_total: 5,
+      provision_id: "§ 3",
+      location: "§ 3 lõige 1",
+      evidence_quote: parsedText.slice(200, 260),
+      char_start: 200,
+      char_end: 260,
+      title: "Ümber lükatud leid",
+      description: "See leid ei peaks dokumendis märgitud olema.",
+      reasoning: "Algne mudel luges lõiku liiga laialt.",
+      suggestion: "Tagasiside puudub.",
+      honte_rule: "HÕNTE § 17",
+      skeptic_verdict: "refuted",
+      skeptic_reasoning: "Skeptik leidis, et normitekst ei toeta seda väidet."
+    }
+  ]
+};
+
+const samplesMeta = [
+  { id: "s1", pass_id: "interpretive", sample_idx: 1, temperature: 0.4, returned_count: 5, grounded_count: 5, dropped_ungrounded: 0, reused: false, duration_ms: 1000, input_tokens: 100, output_tokens: 50, cost_usd: 0.01 },
+  { id: "s2", pass_id: "interpretive", sample_idx: 2, temperature: 0.4, returned_count: 4, grounded_count: 4, dropped_ungrounded: 0, reused: false, duration_ms: 1100, input_tokens: 101, output_tokens: 51, cost_usd: 0.011 },
+  { id: "s3", pass_id: "interpretive", sample_idx: 3, temperature: 0.4, returned_count: 6, grounded_count: 5, dropped_ungrounded: 1, reused: false, duration_ms: 1200, input_tokens: 102, output_tokens: 52, cost_usd: 0.012 },
+  { id: "s4", pass_id: "interpretive", sample_idx: 4, temperature: 0.4, returned_count: 5, grounded_count: 5, dropped_ungrounded: 0, reused: true, duration_ms: 10, input_tokens: 0, output_tokens: 0, cost_usd: 0 },
+  { id: "s5", pass_id: "interpretive", sample_idx: 5, temperature: 0.4, returned_count: 5, grounded_count: 5, dropped_ungrounded: 0, reused: false, duration_ms: 1300, input_tokens: 103, output_tokens: 53, cost_usd: 0.013 },
+  { id: "r1", pass_id: "refute", sample_idx: 1, temperature: 0, returned_count: 1, grounded_count: 1, dropped_ungrounded: 0, reused: false, duration_ms: 500, input_tokens: 80, output_tokens: 40, cost_usd: 0.005 }
+];
+
+const fixture = {
+  bill: {
+    id: "bill-row-1",
+    bill_number: "123 SE",
+    title: "Testseaduse muutmise seadus",
+    api_data: {
+      uuid: "11111111-2222-3333-4444-555555555555",
+      draftTypeCode: "SE",
+      leadingCommittee: { name: "Õiguskomisjon" }
+    },
+    bill_documents: [
+      { id: "doc-v1", doc_version: "v1", fetched_at: "2026-07-01T10:00:00Z" }
+    ]
+  },
+  history: [
+    { analysis_id: "analysis-current", doc_version: "v1", created_at: "2026-07-02T10:00:00Z", prompt_version: "prompt-v3", checker_version: "checker-v2", model: "test-model", provider: "test-provider", duration_ms: 12450, cost_usd: 0.1234, finding_count: 3, refuted_count: 1 },
+    { analysis_id: "analysis-old", doc_version: "v0", created_at: "2026-06-01T10:00:00Z", prompt_version: "prompt-v2", checker_version: "checker-v1", model: "old-model", provider: "test-provider", duration_ms: 9000, cost_usd: 0.08, finding_count: 1, refuted_count: 0 }
+  ],
+  analysis,
+  analysesById: {
+    "analysis-current": analysis,
+    "analysis-old": { ...analysis, id: "analysis-old", findings: [analysis.findings[0]], stats: { llm: { clusters: [] }, refute: { judged: 1, refuted: 0 } } }
+  },
+  parsedText: { parsed_text: parsedText },
+  samplesMeta,
+  samplesByAnalysis: {
+    "analysis-current": samplesMeta,
+    "analysis-old": []
+  },
+  config: { SUPABASE_URL: "https://example.supabase.co" }
+};
+window.__LAWLAB_FIXTURE__ = fixture;
+
+const methodology = {
+  checks: [
+    { id: "deterministic-structural", name_et: "Struktuurikontroll", name_en: "Structural check" }
+  ],
+  passes: [
+    { id: "interpretive", name_et: "Tõlgenduslik valim", name_en: "Interpretive sample" },
+    { id: "refute", name_et: "Skeptiku kontroll", name_en: "Skeptic check" }
+  ],
+  categories: [
+    { key: "structural_integrity", label_et: "Struktuuriterviklus", label_en: "Structural integrity", honte_citation: "HÕNTE § 16" },
+    { key: "logical_contradiction", label_et: "Loogiline vastuolu", label_en: "Logical contradiction", honte_citation: "HÕNTE § 16" },
+    { key: "linguistic_ambiguity", label_et: "Keeleline ühemõttelisus", label_en: "Linguistic ambiguity", honte_citation: "HÕNTE § 15" },
+    { key: "terminology", label_et: "Terminoloogia", label_en: "Terminology", honte_citation: "HÕNTE § 17" }
+  ]
+};
+
+const originalFetch = window.fetch.bind(window);
+window.fetch = async (url, options) => {
+  if (String(url).endsWith("/data/methodology.json")) {
+    return new Response(JSON.stringify(methodology), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+  return originalFetch(url, options);
+};
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function tick() {
+  return new Promise((resolve) => window.setTimeout(resolve, 0));
+}
+
+try {
+  await import("../js/bill.js");
+  await window.LawlabBill.init(fixture);
+
+  const overlapAnchors = {
+    A: document.getElementById("mark-A"),
+    B: document.getElementById("mark-B"),
+    C: document.getElementById("mark-C")
+  };
+  const missingOverlapAnchors = Object.entries(overlapAnchors)
+    .filter(([, node]) => !node)
+    .map(([id]) => id);
+  assert(missingOverlapAnchors.length === 0, `assert-overlap-anchors: missing ${missingOverlapAnchors.join(", ")}`);
+  assert(!document.getElementById("mark-D"), "assert-refuted-not-marked: D should not be highlighted");
+
+  const refutedCard = document.querySelector("#refutedSection #finding-D");
+  assert(refutedCard, "assert-refuted-section: missing D card");
+  assert(refutedCard.textContent.includes("Skeptik leidis, et normitekst ei toeta seda väidet."), "assert-refuted-section: missing skeptic reasoning");
+
+  assert(document.getElementById("pipelinePanel").textContent.includes("alla läve"), "assert-subthreshold-visible: missing below-threshold cluster");
+
+  const sampleRows = Array.from(document.querySelectorAll(".sample-table tr.sample-row"));
+  assert(sampleRows.length === 5, `assert-sample-table: expected 5 rows, got ${sampleRows.length}`);
+  assert(sampleRows.some((row) => row.textContent.includes("taaskasutatud")), "assert-sample-table: missing reused chip");
+
+  const confirmButton = document.querySelector("#finding-B button[data-feedback='confirm']");
+  assert(confirmButton, "assert-feedback-flow: missing confirm button");
+  confirmButton.click();
+  await tick();
+  assert(window.__postFeedbackCalls.length === 1, "assert-feedback-flow: postFeedback was not called");
+  assert(window.__postFeedbackCalls[0].findingId === "B", "assert-feedback-flow: wrong finding id");
+  assert(window.__postFeedbackCalls[0].verdict === "confirm", "assert-feedback-flow: wrong verdict");
+  assert(document.getElementById("finding-B").textContent.includes("Aitäh tagasiside eest"), "assert-feedback-flow: missing thanks text");
+
+  assert(document.getElementById("finding-B").textContent.includes("Kooskõla: 4/5"), "assert-agreement-badge: missing agreement text");
+
+  const historyRows = document.querySelectorAll(".history-row");
+  assert(historyRows.length === 2, `assert-history-renders: expected 2 rows, got ${historyRows.length}`);
+
+  const result = document.getElementById("test-result");
+  result.className = "pass";
+  result.textContent = "ALL-PASS bill detail";
+} catch (error) {
+  console.error(error);
+  const result = document.getElementById("test-result");
+  result.className = "fail";
+  result.textContent = `FAIL ${error.message}`;
+}
+</script>
+</body>
+</html>
