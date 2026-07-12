@@ -13,7 +13,6 @@ Usage:
 
 from __future__ import annotations
 import argparse
-import hashlib
 import json
 import os
 import sys
@@ -22,21 +21,21 @@ from typing import List
 import config
 import requests
 from .parser.structure import parse_bill
-from .checkers.deterministic import run_deterministic, CHECKER_VERSION
-from .aggregate import run_self_consistency, _spans_overlap
+from .checkers.deterministic import run_deterministic, checker_version_label
+from .aggregate import run_self_consistency, cluster_with_summaries, _spans_overlap
+from . import manifest as manifest_mod
+from .llm import engine as llm_engine
+from .llm import refute as refute_mod
 from .llm.client import LLMError
-from .models import Finding, AnalysisResult, CATEGORIES
-from .prompts.internal_consistency import PROMPT_VERSION
+from .models import Finding, AnalysisResult, CATEGORIES, SampleRecord
+from .prompts import internal_consistency
 
 CACHE_DIR = os.path.join(os.path.dirname(__file__), ".cache")
 
 
 def cache_key(text: str, model: str, n: int, k: int, temp: float) -> str:
-    blob = (
-        f"{text}|provider={config.LLM_PROVIDER}|{PROMPT_VERSION}|{model}|"
-        f"{CHECKER_VERSION}|n={n}|k={k}|t={temp}"
-    )
-    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:32]
+    engine_manifest = manifest_mod.build_engine_manifest(config.LLM_PROVIDER, model, n, k, temp)
+    return manifest_mod.cache_key(manifest_mod.text_sha(text), engine_manifest)
 
 
 def _dedup_llm_against_deterministic(det: List[Finding], llm: List[Finding]) -> List[Finding]:
@@ -48,9 +47,64 @@ def _dedup_llm_against_deterministic(det: List[Finding], llm: List[Finding]) -> 
     return kept
 
 
-def analyze(text: str, use_llm: bool, n: int, k: int, temp: float, use_cache: bool):
+def _sample_record_from_dict(data: dict, *, reused: bool = False) -> SampleRecord:
+    allowed = SampleRecord.__dataclass_fields__.keys()
+    kwargs = {key: data[key] for key in allowed if key in data}
+    record = SampleRecord(**kwargs)
+    record.reused = reused
+    return record
+
+
+def _cluster_reused_samples(reused_samples, n: int, k: int):
+    records = []
+    samples: List[List[Finding]] = [[] for _ in range(n)]
+    for ordinal, item in enumerate(reused_samples or []):
+        if item.get("pass_id", "interpretive") != "interpretive":
+            continue
+        record = _sample_record_from_dict(item, reused=True)
+        if record.sample_idx < 0:
+            record.sample_idx = ordinal
+        records.append(record)
+        if 0 <= record.sample_idx < n:
+            samples[record.sample_idx] = [Finding(**d) for d in record.parsed]
+    stable, summaries = cluster_with_summaries(samples, n_runs=n, k=k)
+    stats = {
+        "samples": n,
+        "min_agreement": k,
+        "per_sample": [
+            {
+                "returned": r.returned_count,
+                "grounded": r.grounded_count,
+                "dropped": r.dropped_ungrounded,
+            }
+            for r in sorted(records, key=lambda rec: rec.sample_idx)
+        ],
+        "raw_findings": sum(len(s) for s in samples),
+        "stable_findings": len(stable),
+        "clusters": summaries,
+    }
+    return stable, records, stats
+
+
+def _usage(records: List[SampleRecord], wall_ms: int):
+    return {
+        "input_tokens": sum(r.input_tokens or 0 for r in records),
+        "output_tokens": sum(r.output_tokens or 0 for r in records),
+        "cost_usd": round(sum(r.cost_usd or 0.0 for r in records), 6),
+        "duration_ms": wall_ms,
+    }
+
+
+def analyze(text: str, use_llm: bool, n: int, k: int, temp: float, use_cache: bool,
+            reused_samples=None):
+    import time
+
+    t0 = time.monotonic()
     model = config.active_model()
-    key = cache_key(text, model, n, k, temp)
+    text_hash = manifest_mod.text_sha(text)
+    engine_manifest = manifest_mod.build_engine_manifest(config.LLM_PROVIDER, model, n, k, temp)
+    key = manifest_mod.cache_key(text_hash, engine_manifest)
+    llm_key = manifest_mod.llm_cache_key(text_hash, engine_manifest)
     cache_path = os.path.join(CACHE_DIR, key + ".json")
     if use_cache and os.path.exists(cache_path):
         with open(cache_path, encoding="utf-8") as fh:
@@ -59,28 +113,55 @@ def analyze(text: str, use_llm: bool, n: int, k: int, temp: float, use_cache: bo
     bill = parse_bill(text)
     findings: List[Finding] = run_deterministic(bill)
     stats = {"deterministic": len(findings)}
+    records: List[SampleRecord] = []
 
     if use_llm:
         hint = " ".join(f"{s.pid}({s.kind})" for s in bill.sections)
         try:
-            stable, llm_stats = run_self_consistency(text, hint, n=n, k=k, temperature=temp, model=model)
+            if reused_samples is not None:
+                stable, llm_records, llm_stats = _cluster_reused_samples(reused_samples, n, k)
+            else:
+                stable, llm_records, llm_stats = run_self_consistency(
+                    text, hint, n=n, k=k, temperature=temp, model=model
+                )
             stable = _dedup_llm_against_deterministic(findings, stable)
+            candidates = [
+                f for f in stable
+                if f.runs_found and f.runs_total and f.runs_found < f.runs_total
+            ]
+            refute_records, refute_stats = refute_mod.refute_findings(text, candidates, model=model)
             findings.extend(stable)
+            records.extend(llm_records)
+            records.extend(refute_records)
             stats["llm"] = llm_stats
+            stats["refute"] = refute_stats
         except (
             LLMError,
             requests.RequestException,
+            llm_engine.LLMParseError,
         ) as e:
             # API/limit errors must not lose deterministic output.
             stats["llm_error"] = str(e)[:200]
 
     result = AnalysisResult(
         bill_number=None, bill_title=bill.title, cache_key=key, model=model,
-        prompt_version=PROMPT_VERSION, checker_version=CHECKER_VERSION,
-        config={"samples": n, "k": k, "temperature": temp, "used_llm": use_llm},
+        prompt_version=internal_consistency.PROMPT_VERSION,
+        checker_version=checker_version_label(),
+        provider=config.LLM_PROVIDER,
+        engine=engine_manifest,
+        config={
+            "samples": n, "k": k, "temperature": temp, "used_llm": use_llm,
+            "llm_cache_key": llm_key,
+        },
         findings=findings,
     )
-    out = {"result": result.to_dict(), "stats": stats}
+    wall_ms = int((time.monotonic() - t0) * 1000)
+    out = {
+        "result": result.to_dict(),
+        "stats": stats,
+        "samples": [r.to_dict() for r in records],
+        "usage": _usage(records, wall_ms),
+    }
     # Never cache a run whose LLM pass errored (e.g. transient/limit) — it would
     # freeze an incomplete result; let it retry once the API is reachable.
     if use_cache and "llm_error" not in stats:

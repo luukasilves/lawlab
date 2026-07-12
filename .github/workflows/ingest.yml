@@ -1,28 +1,50 @@
 name: ingest-and-analyze
 
-# The fix for the outage's root cause: the old pipeline was run by hand and went
-# stale. This runs ingestion daily, then analyses any new/changed bills.
 on:
   schedule:
-    - cron: "0 5 * * *"      # 05:00 UTC daily
-  workflow_dispatch: {}        # manual trigger
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+    inputs:
+      force_fail:
+        description: 'Prove the failure-notify path'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
-  run:
+  ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          python-version: '3.14'
       - run: pip install -r requirements.txt
+      - name: Force failure for notification test
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.force_fail }}
+        run: exit 1
       - name: Ingest active draft bills
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        run: python3 -m ingestion.run_ingest --pages 2
+          LAWLAB_CORPUS_SINCE: '2026-01-01'
+        run: python3 -m ingestion.run_ingest --max-pages 20
+
+  analyze:
+    needs: ingest
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: pip install -r requirements.txt
       - name: Analyse new/changed bills
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -30,4 +52,15 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           # ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # optional: provider switch
-        run: python3 -m ingestion.analyze_pending
+        run: python3 -m ingestion.analyze_pending --max-bills-per-run 10
+
+  notify-failure:
+    needs: [ingest, analyze]
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh issue create --title "Pipeline run failed: $GITHUB_RUN_ID" --body "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"

@@ -14,7 +14,7 @@ from __future__ import annotations
 import io
 import time
 import hashlib
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Iterator
 
 import requests
 import config
@@ -35,16 +35,50 @@ DELAY = config.RIIGIKOGU_API_DELAY
 
 
 def fetch_with_retry(url: str, max_retries: int = 4, base_delay: float = 10.0,
-                     timeout: int = 60) -> Optional[requests.Response]:
+                     timeout: int = 60, transient_delay: float = 1.0
+                     ) -> Optional[requests.Response]:
     for attempt in range(max_retries):
-        resp = requests.get(url, timeout=timeout)
+        try:
+            resp = requests.get(url, timeout=timeout)
+        except (requests.Timeout, requests.ConnectionError):
+            if attempt < max_retries - 1:
+                time.sleep(transient_delay * (2 ** attempt))
+                continue
+            return None
+
         if resp.status_code == 429:
-            wait = base_delay * (2 ** attempt)
-            time.sleep(wait)
-            continue
-        resp.raise_for_status()
+            if attempt < max_retries - 1:
+                wait = base_delay * (2 ** attempt)
+                time.sleep(wait)
+                continue
+            return None
+        if 500 <= resp.status_code < 600:
+            if attempt < max_retries - 1:
+                time.sleep(transient_delay * (2 ** attempt))
+                continue
+            return None
+        try:
+            resp.raise_for_status()
+        except requests.HTTPError:
+            if resp.status_code >= 500 and attempt < max_retries - 1:
+                time.sleep(transient_delay * (2 ** attempt))
+                continue
+            raise
         return resp
     return None
+
+
+def _activity_date(draft: Dict[str, Any]) -> str:
+    return (draft.get("activeDraftStatusDate") or draft.get("initiated") or "")[:10]
+
+
+def _in_corpus_window(draft: Dict[str, Any], cutoff: str) -> bool:
+    return _activity_date(draft) >= cutoff or draft.get("proceedingStatus") == "IN_PROCESS"
+
+
+def _older_than_cutoff(draft: Dict[str, Any], cutoff: str) -> bool:
+    date = _activity_date(draft)
+    return bool(date) and date < cutoff
 
 
 def list_drafts(only_bills: bool = True, only_active: bool = True,
@@ -52,6 +86,8 @@ def list_drafts(only_bills: bool = True, only_active: bool = True,
     """Return draft summaries. only_bills -> draftTypeCode SE (seaduseelnõu);
     only_active -> proceedingStatus IN_PROCESS."""
     url = f"{API}/volumes/drafts?lang=et&page={page}&size={size}"
+    if only_bills:
+        url += "&draftTypeCode=SE"
     resp = fetch_with_retry(url)
     if not resp:
         return []
@@ -64,6 +100,26 @@ def list_drafts(only_bills: bool = True, only_active: bool = True,
             continue
         out.append(d)
     return out
+
+
+def iterate_corpus(cutoff: str, page_size: int = 50,
+                   max_pages: int = 20) -> Iterator[Dict[str, Any]]:
+    """Yield SE drafts with activity since cutoff, plus any still in process."""
+    for page in range(max_pages):
+        drafts = list_drafts(only_bills=True, only_active=False,
+                             page=page, size=page_size)
+        if not drafts:
+            return
+
+        se_drafts = [d for d in drafts if d.get("draftTypeCode") == "SE"]
+        for draft in se_drafts:
+            if _in_corpus_window(draft, cutoff):
+                yield draft
+
+        if se_drafts and all(_older_than_cutoff(d, cutoff) for d in se_drafts):
+            return
+        if page < max_pages - 1:
+            time.sleep(DELAY)
 
 
 def get_draft_texts(uuid: str) -> List[Dict[str, Any]]:

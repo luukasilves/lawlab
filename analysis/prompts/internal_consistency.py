@@ -64,7 +64,9 @@ riivatud, nt "HÕNTE § 17 (terminite ühtne kasutamine)" või "HÕNTE § 28 (vi
 Vasta AINULT JSON-formaadis: {"issues": [ ... ]}. Kui probleeme ei ole: {"issues": []}.
 Ära lisa midagi muud peale JSON-i."""
 
+USER_TEMPLATE = "Analüüsi järgmist seaduseelnõu.{structure_hint}\n\n=== EELNÕU TEKST ===\n{bill_text}"
+
 
 def build_user_message(bill_text: str, structure_hint: str = "") -> str:
     hint = f"\n\nEelnõu struktuur (abiks):\n{structure_hint}" if structure_hint else ""
-    return f"Analüüsi järgmist seaduseelnõu.{hint}\n\n=== EELNÕU TEKST ===\n{bill_text}"
+    return USER_TEMPLATE.format(bill_text=bill_text, structure_hint=hint)

@@ -24,7 +24,12 @@ def _matches(finding: Dict[str, Any], label: Dict[str, Any]) -> bool:
     return (label.get("provision_id", "") in loc) or (label.get("location", "") in loc)
 
 
+def _scored_findings(findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [f for f in findings if f.get("skeptic_verdict") != "refuted"]
+
+
 def score(findings: List[Dict[str, Any]], labels: List[Dict[str, Any]]) -> Dict[str, Any]:
+    findings = _scored_findings(findings)
     true_labels = [l for l in labels if l.get("is_true_error") is True]
     false_labels = [l for l in labels if l.get("is_true_error") is False]
 
@@ -56,7 +61,7 @@ def score(findings: List[Dict[str, Any]], labels: List[Dict[str, Any]]) -> Dict[
 
 def score_by_category(findings, labels) -> Dict[str, Dict[str, Any]]:
     cats = defaultdict(lambda: {"f": [], "l": []})
-    for f in findings:
+    for f in _scored_findings(findings):
         cats[f.get("category")]["f"].append(f)
     for l in labels:
         cats[l.get("category")]["l"].append(l)

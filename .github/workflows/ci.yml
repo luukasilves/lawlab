@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: pip install -r requirements.txt
+      - name: Run offline tests
+        run: |
+          python -m analysis.tests.test_checkers && \
+          python -m analysis.tests.test_checkers_adversarial && \
+          python -m analysis.tests.test_aggregate && \
+          python -m analysis.tests.test_aggregate_adversarial && \
+          python -m analysis.tests.test_engine && \
+          python -m analysis.tests.test_run && \
+          python -m analysis.tests.test_manifest && \
+          python -m analysis.tests.test_llm_layer && \
+          python -m analysis.tests.test_pipeline && \
+          python -m ingestion.tests.test_ingest_logic && \
+          python -m eval.test_metrics

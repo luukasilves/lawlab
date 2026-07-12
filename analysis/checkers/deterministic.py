@@ -14,16 +14,28 @@ completeness) are intentionally left to the LLM pass.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import re
-from typing import List
+from typing import Callable, List
 
 from ..parser.structure import parse_bill, Bill, Section, percentages_in
 from ..models import Finding, HONTE_RULE
 
-CHECKER_VERSION = "det-v1"
-
 _SUBPOINT_RE = re.compile(r"(?m)^\s*(\d+)\)\s")
 _PCT_FIRST_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:protsenti|protsent|%)")
+
+
+@dataclass(frozen=True)
+class CheckSpec:
+    id: str
+    version: int
+    category: str
+    name_et: str
+    name_en: str
+    description_et: str
+    description_en: str
+    fn: Callable[[Bill], List[Finding]]
+    enabled: bool = True
 
 
 def _point_numbers(point: str) -> List[str]:
@@ -231,18 +243,53 @@ def check_percentage_allocations(bill: Bill) -> List[Finding]:
     return out
 
 
-_ALL = [
-    check_section_numbering,
-    check_instruction_numbering,
-    check_entry_into_force_refs,
-    check_percentage_allocations,
+CHECKS = [
+    CheckSpec(
+        "section_numbering", 1, "structural_integrity",
+        "Paragrahvide numeratsioon", "Section numbering",
+        "Tuvastab lüngad ja kordused paragrahvide numeratsioonis.",
+        "Detects gaps and duplicate numbers in top-level section numbering.",
+        check_section_numbering,
+    ),
+    CheckSpec(
+        "instruction_numbering", 1, "structural_integrity",
+        "Muutmispunktide numeratsioon", "Amendment instruction numbering",
+        "Tuvastab lüngad ja kordused muutmiskäskude numeratsioonis.",
+        "Detects gaps and duplicate numbers in amendment instruction lists.",
+        check_instruction_numbering,
+    ),
+    CheckSpec(
+        "eif_refs", 1, "reference_integrity",
+        "Jõustumissätte viited", "Entry-into-force references",
+        "Kontrollib, et jõustumissätte viited osutavad eelnõus olemasolevatele sätetele.",
+        "Verifies that entry-into-force references resolve to provisions that exist in the bill.",
+        check_entry_into_force_refs,
+    ),
+    CheckSpec(
+        "percentage_alloc", 1, "arithmetic",
+        "Protsendijaotuste aritmeetika", "Percentage allocation arithmetic",
+        "Kontrollib, et paralleelsete punktide protsendid summeeruvad 100-le.",
+        "Checks that sibling percentage allocations sum to 100.",
+        check_percentage_allocations,
+    ),
 ]
+
+
+def enabled_checks() -> List[CheckSpec]:
+    return [c for c in CHECKS if c.enabled]
+
+
+def checker_version_label() -> str:
+    return ",".join(f"{c.id}@{c.version}" for c in enabled_checks())
 
 
 def run_deterministic(bill: Bill) -> List[Finding]:
     out: List[Finding] = []
-    for fn in _ALL:
-        out.extend(fn(bill))
+    for spec in enabled_checks():
+        findings = spec.fn(bill)
+        for f in findings:
+            f.check_id = spec.id
+        out.extend(findings)
     return out
 
 

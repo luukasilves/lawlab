@@ -11,9 +11,10 @@ from __future__ import annotations
 import json
 import re
 import sys
+import time
 from typing import List, Optional, Tuple
 
-from ..models import Finding, CATEGORIES, SEVERITIES, HONTE_RULE
+from ..models import Finding, CATEGORIES, SEVERITIES, HONTE_RULE, SampleRecord
 from ..prompts.internal_consistency import SYSTEM_PROMPT, PROMPT_VERSION, build_user_message
 from .client import chat_json
 
@@ -113,10 +114,12 @@ def _coerce_category(c: str, *, with_relabel: bool = False):
 
 
 def analyze_once(bill_text: str, structure_hint: str = "",
-                 temperature: float = 0.4, model: str = None) -> Tuple[List[Finding], dict]:
-    """Returns (grounded findings, stats). Stats records hallucinated/dropped count."""
-    content = chat_json(SYSTEM_PROMPT, build_user_message(bill_text, structure_hint),
-                        temperature=temperature, model=model)
+                 temperature: float = 0.4, model: str = None) -> Tuple[List[Finding], SampleRecord]:
+    """Returns grounded findings and the provenance record for this sample."""
+    t0 = time.monotonic()
+    response = chat_json(SYSTEM_PROMPT, build_user_message(bill_text, structure_hint),
+                         temperature=temperature, model=model)
+    content = response.text if hasattr(response, "text") else response
     data = _parse_json(content)
     issues = data.get("issues", []) if isinstance(data, dict) else []
 
@@ -150,11 +153,21 @@ def analyze_once(bill_text: str, structure_hint: str = "",
             suggestion=(it.get("suggestion") or "").strip(),
             # use our verified citation, not the model's (avoids hallucinated §)
             honte_rule=HONTE_RULE.get(category),
-            confidence=1.0, check_id="llm",
+            confidence=1.0, check_id="interpretive",
         ))
-    return findings, {
-        "returned": len(issues),
-        "grounded": len(findings),
-        "dropped": dropped,
-        "relabelled": relabelled,
-    }
+    record = SampleRecord(
+        pass_id="interpretive",
+        sample_idx=-1,
+        temperature=temperature,
+        raw_output=content,
+        parsed=[f.to_dict() for f in findings],
+        returned_count=len(issues),
+        grounded_count=len(findings),
+        dropped_ungrounded=dropped,
+        duration_ms=int((time.monotonic() - t0) * 1000),
+        input_tokens=getattr(response, "input_tokens", None),
+        output_tokens=getattr(response, "output_tokens", None),
+        cost_usd=getattr(response, "cost_usd", 0.0),
+    )
+    record.relabelled = relabelled
+    return findings, record

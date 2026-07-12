@@ -23,8 +23,8 @@ GOLD = os.path.join(HERE, "gold_set.json")
 
 FIXTURES = {
     "728":       (os.path.join(ROOT, "analysis/tests/fixtures/bill_728.txt"), True),
-    "657":       (os.path.join(ROOT, "analysis/tests/fixtures/bill_657.txt"), True),
-    "741":       (os.path.join(ROOT, "analysis/tests/fixtures/bill_741.txt"), True),
+    "657":       (os.path.join(ROOT, "analysis/tests/fixtures/bill_657.txt"), False),
+    "741":       (os.path.join(ROOT, "analysis/tests/fixtures/bill_741.txt"), False),
     "synthetic": (os.path.join(ROOT, "analysis/tests/fixtures/synthetic_errors.txt"), False),
 }
 
@@ -51,8 +51,9 @@ def main():
         if out["stats"].get("llm_error"):
             print(f"\n[{bill}] LLM error: {out['stats']['llm_error'][:80]} — deterministic only")
         s = score(findings, blabels)
+        refuted_count = len([f for f in findings if f.get("skeptic_verdict") == "refuted"])
         rc = f"{s['recall']:.0%}" if s["recall"] is not None else "n/a"
-        print(f"\n[{bill}] {'(cached)' if cached else ''} findings={len(findings)}")
+        print(f"\n[{bill}] {'(cached)' if cached else ''} findings={len(findings)} refuted={refuted_count}")
         print(f"   recall on known errors: {s['recalled']}/{s['true_errors']} ({rc})")
         print(f"   false-alarm guards held: {s['guards_held']}/{s['false_alarm_guards']}"
               f"  (false alarms: {s['false_alarms']})")
