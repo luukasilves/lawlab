@@ -37,8 +37,6 @@ def ingest_corpus(store, cutoff: str, max_pages: int = 20,
             for d in drafts:
                 if limit is not None and stats["seen"] >= limit:
                     break
-                if stats["seen"]:
-                    time.sleep(riigikogu.DELAY)
                 stats["seen"] += 1
 
                 try:
@@ -46,10 +44,23 @@ def ingest_corpus(store, cutoff: str, max_pages: int = 20,
                     uuid = d.get("uuid")
                     title = d.get("title", "")
 
+                    if not dry_run:
+                        # Cheap skip: same activeDraftStatusDate + a stored doc
+                        # means no proceedings movement — no download needed
+                        # (a full re-download crawl blew the 25-min cron cap).
+                        state = store.bill_state(mark)
+                        listing_stage = d.get("activeDraftStatusDate")
+                        if state and state["has_doc"] and listing_stage \
+                                and state["stage"] == listing_stage:
+                            store.upsert_bill(mark, title, d)
+                            stats["unchanged"] += 1
+                            continue
+
                     bill_id = None
                     if not dry_run:
                         bill_id = store.upsert_bill(mark, title, d)
 
+                    time.sleep(riigikogu.DELAY)
                     text, method = riigikogu.extract_bill_text(uuid)
                     if not text:
                         stats["no_text"] += 1

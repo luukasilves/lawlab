@@ -279,6 +279,37 @@ def test_degraded_llm_analysis_not_persisted():
     print("✓ degraded (llm_error) analyses are not persisted — retry stays possible")
 
 
+def test_ingest_skips_unmoved_bills_without_download():
+    """Same activeDraftStatusDate + stored doc => no Riigikogu download (the
+    full re-download crawl blew the 25-minute cron job cap)."""
+    orig_iter, orig_extract, orig_sleep = riigikogu.iterate_corpus, riigikogu.extract_bill_text, time.sleep
+    time.sleep = lambda *_: None
+    riigikogu.iterate_corpus = lambda cutoff, **kw: iter([_draft(1, date="2026-06-01")])
+
+    def must_not_download(uuid):
+        raise AssertionError("unmoved bill was downloaded")
+    riigikogu.extract_bill_text = must_not_download
+
+    class S(FakeStore):
+        def __init__(self):
+            super().__init__([])
+            self.states = {1: {"id": "b1", "stage": "2026-06-01", "has_doc": True}}
+
+        def upsert_bill(self, mark, title, api_data):
+            return "b1"
+
+        def bill_state(self, mark):
+            return self.states.get(mark)
+
+    fs = S()
+    try:
+        stats = run_ingest.ingest_corpus(fs, cutoff="2026-01-01")
+        assert stats["unchanged"] == 1 and stats["failed"] == 0, f"skip broken: {stats}"
+    finally:
+        riigikogu.iterate_corpus, riigikogu.extract_bill_text, time.sleep = orig_iter, orig_extract, orig_sleep
+    print("✓ unmoved bills skip the download entirely")
+
+
 def test_ingest_corpus_isolation_and_run_record():
     orig_iter, orig_extract, orig_sleep = riigikogu.iterate_corpus, riigikogu.extract_bill_text, time.sleep
     time.sleep = lambda *_: None
@@ -293,6 +324,9 @@ def test_ingest_corpus_isolation_and_run_record():
 
         def upsert_bill(self, mark, title, api_data):
             return f"b{mark}"
+
+        def bill_state(self, mark):
+            return self.states.get(mark) if hasattr(self, "states") else None
 
         def latest_doc_hash(self, bill_id):
             return None
@@ -323,5 +357,6 @@ if __name__ == "__main__":
     test_insert_analysis_and_new_writers()
     test_run_pending_cap_and_isolation()
     test_degraded_llm_analysis_not_persisted()
+    test_ingest_skips_unmoved_bills_without_download()
     test_ingest_corpus_isolation_and_run_record()
     print("\nALL INGESTION CONTRACT TESTS PASSED")

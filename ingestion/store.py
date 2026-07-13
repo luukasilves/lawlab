@@ -51,6 +51,20 @@ class SupabaseStore:
         rows = r.json()
         return rows[0].get("content_hash") if rows else None
 
+    def bill_state(self, mark: str):
+        """Cheap change-detection state: stored activeDraftStatusDate + doc presence."""
+        r = requests.get(
+            f"{self.url}/rest/v1/bills?bill_number=eq.{mark}"
+            f"&select=id,stage:api_data->>activeDraftStatusDate,bill_documents(id)",
+            headers=self._h(), timeout=30)
+        r.raise_for_status()
+        rows = r.json()
+        if not rows:
+            return None
+        row = rows[0]
+        return {"id": row["id"], "stage": row.get("stage"),
+                "has_doc": bool(row.get("bill_documents"))}
+
     # ── writes (service key) ──────────────────────────────────────────────
     def upsert_bill(self, mark: str, title: str, api_data: Dict[str, Any]) -> str:
         existing = self.get_bill_by_number(mark)
