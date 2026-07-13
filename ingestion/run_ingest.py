@@ -79,7 +79,10 @@ def ingest_corpus(store, cutoff: str, max_pages: int = 20,
             stats["failed"] += 1
     finally:
         if not dry_run:
-            store.record_run("ingest", started_at, stats["failed"] == 0, stats)
+            try:
+                store.record_run("ingest", started_at, stats["failed"] == 0, stats)
+            except Exception as exc:  # bookkeeping is best-effort
+                print(f"  record_run failed ({type(exc).__name__}) — documents already persisted")
 
     return stats
 

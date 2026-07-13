@@ -101,7 +101,10 @@ def run_pending(store, analyze_fn: Optional[Callable[..., Any]] = None,
             print(f"  analysis listing failed ({type(exc).__name__}: {exc})")
             stats["failed"] += 1
     finally:
-        store.record_run("analyze", started_at, stats["failed"] == 0, stats)
+        try:
+            store.record_run("analyze", started_at, stats["failed"] == 0, stats)
+        except Exception as exc:  # bookkeeping is best-effort: a flaky network
+            print(f"  record_run failed ({type(exc).__name__}) — analyses already persisted")
 
     return stats
 
