@@ -55,6 +55,21 @@ async function run() {
   const sectionHeads = text("section h2, section h3");
   const parityHeads = ["Andmeallikad", "Riigikogu API", "Dokumendid", "Andmete uuendamine", "AI mudel", "Teksti piirang", "Süsteemi promptid"];
   assert(parityHeads.every((head) => sectionHeads.includes(head)), "parity-sections");
+
+  const story = document.getElementById("lugu");
+  assert(
+    story && story.querySelectorAll("p").length >= 3 && story.textContent.includes("teine versioon"),
+    "story-section"
+  );
+
+  const downloads = document.getElementById("allalaadimine");
+  assert(
+    downloads &&
+      downloads.querySelectorAll(".download-row").length === 5 &&
+      downloads.querySelectorAll(".download-btn").length === 7 &&
+      downloads.querySelector('.download-row[data-dataset="findings"]'),
+    "downloads-section"
+  );
   assert(
     document.querySelector('.prompt-detail[data-pass-id="interpretive"] summary')?.textContent === "Näita ic-v1 prompti",
     "show-prompt-label"
@@ -77,7 +92,11 @@ async function run() {
   const categoryRows = document.querySelectorAll("#categories-table tbody tr");
   assert(categoryRows.length === 8 && Array.from(categoryRows).every((row) => row.textContent.includes("HÕNTE")), "categories-honte");
 
-  assert(document.querySelectorAll(".limitations li").length === 4, "limitations");
+  assert(document.querySelectorAll(".limitations li").length === 5, "limitations");
+  assert(
+    text(".limitations li").includes("ei koosta muudetava seaduse tulevast tervikteksti"),
+    "limitations-future-text"
+  );
 
   const andmed = document.getElementById("andmed");
   assert(
@@ -92,6 +111,11 @@ async function run() {
   const enChecks = text("#checks-table tbody");
   const enCheckNames = ["Section numbering", "Amendment instruction numbering", "Entry-into-force references", "Percentage allocation arithmetic"];
   assert(enCheckNames.every((name) => enChecks.includes(name)), "lang-en");
+  assert(document.getElementById("lugu")?.textContent.includes("second version"), "story-section-en");
+  assert(
+    text(".limitations li").includes("does not construct the future consolidated text"),
+    "limitations-future-text-en"
+  );
   assert(document.querySelector("h1")?.textContent === "About" && document.title === "About", "about-title-en");
 
   result.textContent = "ALL-PASS";

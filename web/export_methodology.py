@@ -20,17 +20,78 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "web" / "data" / "methodology.json"
 PIPELINE_ORDER = ["parse", "deterministic", "interpretive", "cluster", "dedup", "refute", "persist"]
 
+STORY_ET = [
+    "Apsakaleidja (aps + leidja) sündis lihtsast küsimusest: kas tehisintellekt suudab "
+    "seaduseelnõust leida tehnilisi vigu enne, kui eelnõust saab seadus? Riigikogu menetleb "
+    "igal aastal sadu eelnõusid ning normitehnilised apsud — vale viide, vastuoluline "
+    "üleminekusäte, kattuvad jõustumistähtajad — jõuavad vahel ka Riigi Teatajasse. Masin "
+    "ei väsi ega kiirusta, seega lasime tal lugeda.",
+    "See on projekti teine versioon. Esimene versioon (2026. aasta algusest) oli kiire "
+    "eksperiment: üks AI-päring eelnõu kohta, tekst kärbitud 30 000 märgini ja "
+    "analüüsiloogika suletud. Eksperiment õpetas kaks asja: mudel leiab päris vigu — ja üks "
+    "mudelivastus üksinda ei ole usaldusväärne.",
+    "Teine versioon on ehitatud nullist üles kolme põhimõtte ümber. Skepsis enda suhtes: "
+    "iga eelnõu analüüsitakse viis korda sõltumatult, avaldatakse ainult leiud, mida "
+    "kinnitab vähemalt kolm analüüsi viiest, ja eraldi skeptikusamm püüab iga leidu ümber "
+    "lükata — ka ümberlükatud leiud jäävad lehele nähtavaks. Tekstipõhisus: leid, mis ei "
+    "tsiteeri eelnõu sõna-sõnalt, visatakse ära. Avatus: kogu kood on GitHubis ning iga "
+    "mudelivastus, vaheotsus ja analüüsi maksumus on avalikus andmebaasis — siit lehelt "
+    "alla laaditav.",
+    "Leiud on masina tähelepanekud, mitte õiguslik hinnang. Eesmärk ei ole asendada "
+    "juristi ega Riigikogu Kantselei toimetajaid, vaid pakkuda neile — ja igale huvilisele "
+    "— kiiret teist silmapaari.",
+]
+
+STORY_EN = [
+    "Apsakaleidja — Estonian for \"blunder-finder\" — began with a simple question: can AI "
+    "find technical errors in draft legislation before the draft becomes law? The Riigikogu "
+    "handles hundreds of bills a year, and drafting slips — a wrong cross-reference, a "
+    "contradictory transition provision, overlapping entry-into-force dates — occasionally "
+    "make it into the statute book. A machine does not tire or rush, so we let it read.",
+    "This is the second version of the project. The first (early 2026) was a quick "
+    "experiment: one AI query per bill, text truncated at 30,000 characters, and the "
+    "analysis logic closed. The experiment taught us two things: the model finds real "
+    "errors — and a single model response, on its own, cannot be trusted.",
+    "Version two was rebuilt from scratch around three principles. Skepticism about "
+    "itself: every bill is analysed five times independently, only findings confirmed by "
+    "at least three of the five runs are published, and a separate skeptic pass tries to "
+    "refute each finding — refuted findings stay visible on the page. Grounding: a finding "
+    "that does not quote the bill verbatim is discarded. Openness: all the code is on "
+    "GitHub, and every model response, intermediate decision and analysis cost sits in a "
+    "public database — downloadable from this page.",
+    "Findings are machine observations, not legal opinions. The goal is not to replace "
+    "lawyers or the Riigikogu's drafting editors, but to offer them — and anyone "
+    "interested — a fast second pair of eyes.",
+]
+
 LIMITATIONS_ET = [
+    "Muutmisseaduste puhul analüüsitakse ainult eelnõu enda teksti ehk muudatusettepanekute "
+    "sõnastust. Süsteem ei koosta muudetava seaduse tulevast tervikteksti ega võrdle eelnõu "
+    "Riigi Teataja kehtiva redaktsiooniga — vead, mis ilmnevad alles muudatuse ja kehtiva "
+    "seaduse koosmõjus, jäävad märkamata. (Täiesti uue seaduse eelnõu puhul on analüüsitav "
+    "tekst ühtlasi kogu tulevane seadus.)",
     "Analüüsitakse ainult eelnõu põhiteksti — seletuskirja ei analüüsita.",
     "Vanas .doc-vormingus ja pildipõhiseid PDF-e ei suudeta lugeda (tekst puudub).",
-    "Deterministlikud kontrollid katavad mehaanilisi vigu; sisulisi hinnanguid annab keelemudel, mille leiud on tõenäosuslikud.",
+    "Deterministlikud kontrollid katavad mehaanilisi vigu; sisulisi hinnanguid annab "
+    "keelemudel, mille leiud on tõenäosuslikud: mudel võib näha probleemi seal, kus seda ei "
+    "ole, ja jätta tegeliku vea märkamata. Avaldamiskünnis ja skeptikusamm vähendavad neid "
+    "riske, kuid ei kõrvalda kumbagi.",
     "Korpus: seaduseelnõud (SE), mille menetluses on toimunud muutusi alates 1. jaanuarist 2026.",
 ]
 
 LIMITATIONS_EN = [
+    "For amending acts, only the text of the bill itself — the wording of the amendment "
+    "instructions — is analysed. The system does not construct the future consolidated text "
+    "of the amended act and does not compare the bill against the current consolidated text "
+    "in Riigi Teataja, so errors that only emerge from the interaction between the amendment "
+    "and the current law go unnoticed. (For a bill proposing an entirely new act, the "
+    "analysed text is the whole future act.)",
     "Only the main text of the bill is analysed — explanatory memoranda are not analysed.",
     "Old .doc files and image-based PDFs cannot be read because they do not contain extractable text.",
-    "Deterministic checks cover mechanical errors; substantive assessments are made by a language model and its findings are probabilistic.",
+    "Deterministic checks cover mechanical errors; substantive assessments are made by a "
+    "language model and its findings are probabilistic: the model can see a problem where "
+    "there is none and miss a real one. The publication threshold and the skeptic pass "
+    "reduce both risks but eliminate neither.",
     "Corpus: draft acts (SE) whose proceedings have changed since 1 January 2026.",
 ]
 
@@ -141,6 +202,8 @@ def build_methodology() -> dict[str, Any]:
             for key in _category_keys(CATEGORIES)
         ],
         "honte_rules": load_honte_rules(),
+        "story_et": STORY_ET,
+        "story_en": STORY_EN,
         "limitations_et": LIMITATIONS_ET,
         "limitations_en": LIMITATIONS_EN,
         "data_api": DATA_API,

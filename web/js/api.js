@@ -58,6 +58,37 @@ export async function api(path, { method = 'GET', body, minimal = false, headers
   return parsed;
 }
 
+// Page through a PostgREST resource with Range headers. The query must carry a
+// stable order= or pages can overlap. Supabase caps a single response at 1000
+// rows, hence the loop; a 416 means we paged exactly past the end.
+export async function fetchAll(pathWithQuery, { pageSize = 1000, onProgress } = {}) {
+  const rows = [];
+  for (let from = 0; ; from += pageSize) {
+    let page;
+    try {
+      page = await api(pathWithQuery, {
+        headers: { Range: `${from}-${from + pageSize - 1}` }
+      });
+    } catch (error) {
+      if (error.status === 416) {
+        break;
+      }
+      throw error;
+    }
+    if (!Array.isArray(page) || page.length === 0) {
+      break;
+    }
+    rows.push(...page);
+    if (onProgress) {
+      onProgress(rows.length);
+    }
+    if (page.length < pageSize) {
+      break;
+    }
+  }
+  return rows;
+}
+
 export function fetchBillIndex() {
   return api('/rest/v1/bill_index?select=*&order=doc_fetched_at.desc.nullslast');
 }

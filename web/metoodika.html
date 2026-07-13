@@ -4,18 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>About</title>
+<script type="importmap">
+{
+  "imports": {
+    "i18n": "/js/i18n.js",
+    "shell": "/js/shell.js",
+    "api": "/js/api.js"
+  }
+}
+</script>
+<link rel="stylesheet" href="/css/app.css">
 <style>
+  /* Site-wide tokens (--ink/--bg/--line/...) come from /css/app.css; only
+     About-page-specific tokens live here. */
   :root{
-    --ink:#161616; --soft:#4e5560; --muted:#747b86; --line:#deded8; --bg:#f7f7f3; --panel:#fff;
     --accent:#255f85; --accent-soft:#e8f1f5; --ok:#2f7a4f; --disabled:#8a8f98;
   }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif}
-  a{color:var(--accent)}
-  .topbar{border-bottom:1px solid var(--line);background:var(--panel)}
-  .topbar-inner{max-width:1120px;margin:0 auto;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:18px}
-  .brand{font-weight:700;text-decoration:none;color:var(--ink)}
-  .repo-link{font-size:13px}
+  main a{color:var(--accent)}
   main{max-width:1120px;margin:0 auto;padding:26px 24px 54px}
   .hero{padding:18px 0 22px;border-bottom:1px solid var(--line)}
   h1{font-size:30px;line-height:1.15;margin:0 0 12px;letter-spacing:0}
@@ -55,26 +60,35 @@
   .curl-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px}
   .curl-grid pre{margin:0;min-height:132px}
   .api-note,.gold-note{color:var(--soft);max-width:800px}
+  .story p{max-width:820px;margin:0 0 12px;font-size:15.5px}
+  .story p:last-child{margin-bottom:0}
+  .downloads{display:grid;gap:10px;margin-top:14px;max-width:900px}
+  .download-row{display:flex;justify-content:space-between;align-items:center;gap:16px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+  .download-info strong{font-size:14.5px}
+  .download-info p{margin:3px 0 0;color:var(--soft);font-size:13px}
+  .download-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+  .download-btn{border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent);border-radius:6px;padding:6px 12px;font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer}
+  .download-btn:hover{background:var(--accent);color:#fff}
+  .download-btn:disabled{opacity:.55;cursor:progress}
+  .download-status{font-size:12.5px;color:var(--muted);min-width:70px}
+  .download-status.failed{color:#c0392b}
   .empty,.error{padding:16px;border:1px solid var(--line);background:var(--panel);border-radius:8px;color:var(--soft)}
   @media (max-width:900px){
     .engine,.pipeline,.passes,.rules,.curl-grid{grid-template-columns:1fr}
     .step{min-height:auto}
     th:nth-child(2),td:nth-child(2){min-width:260px}
     .table-wrap{overflow:auto}
+    .download-row{flex-direction:column;align-items:flex-start}
   }
 </style>
 </head>
-<body>
-<div class="topbar">
-  <div class="topbar-inner">
-    <a class="brand" href="/">Apsakaleidja</a>
-    <a class="repo-link" href="https://github.com/luukasilves/lawlab">GitHub</a>
-  </div>
-</div>
+<body data-active="method">
+<div id="app-header"></div>
 <main id="metoodika-root" aria-live="polite">
   <div class="empty">Laen metoodikat...</div>
 </main>
+<div id="app-footer"></div>
 <script src="/config.js"></script>
-  <script type="module" src="/js/metoodika.js"></script>
+<script type="module" src="/js/metoodika.js"></script>
 </body>
 </html>
