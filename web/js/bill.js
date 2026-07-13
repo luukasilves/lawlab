@@ -32,9 +32,10 @@ const FALLBACKS = {
   finding_count: "leidu",
   found: "leiti",
   grounded: "tekstiga seotud",
-  history: "Ajalugu",
+  history: "Analüüside ajalugu",
   independent_analyses: "sõltumatut analüüsi",
   meta_committee: "Juhtivkomisjon",
+  meta_prompt: "Prompt versioon",
   meta_type: "Liik",
   meta_updated: "Viimati uuendatud",
   methodology_data: "Metoodika andmed",
@@ -50,12 +51,19 @@ const FALLBACKS = {
   sample_reused: "taaskasutatud",
   samples: "Valimid",
   sampling_step: "Tõlgenduslik valim",
+  severity_HIGH: "Kõrge",
+  severity_LOW: "Madal",
+  severity_MEDIUM: "Keskmine",
   skeptic_refuted: "Ümber lükatud",
   skeptic_step: "Skeptiku kontroll",
   skeptic_upheld: "Kontrollitud",
   source_model: "Mudel",
   source_rule: "Reegel",
   suggestion: "Soovitus",
+  summary_analyzed: "Analüüsitud",
+  summary_chars: "märki",
+  summary_documents: "Dokumendid",
+  summary_prompt: "Prompt",
   threshold: "künnis",
   tokens: "Tokenid",
   totals_step: "Kokkuvõte",
@@ -130,6 +138,10 @@ function safeSeverity(severity) {
 
 function severityRank(severity) {
   return SEVERITY_RANK[safeSeverity(severity)] || 0;
+}
+
+function severityLabel(severity) {
+  return tr(`severity_${safeSeverity(severity)}`);
 }
 
 function isRefuted(finding) {
@@ -321,6 +333,20 @@ function setFrame() {
   renderMetaGrid();
 }
 
+function interpretivePassName() {
+  const pass = state.methodology.passesById.get("interpretive");
+  return pass ? localizedName(pass, "") : "";
+}
+
+function promptVersionLabel() {
+  const version = state.analysis?.prompt_version || state.currentHistory?.prompt_version || "";
+  if (!version) {
+    return "-";
+  }
+  const passName = interpretivePassName();
+  return passName && passName !== "-" ? `${version} — ${passName}` : version;
+}
+
 function renderMetaGrid() {
   const grid = byId("metaGrid");
   clear(grid);
@@ -328,7 +354,8 @@ function renderMetaGrid() {
   const cards = [
     [tr("meta_type"), apiData.draftTypeCode || "-"],
     [tr("meta_committee"), apiData.leadingCommittee?.name || "-"],
-    [tr("meta_updated"), formatDate(state.document?.fetched_at)]
+    [tr("meta_updated"), formatDate(state.document?.fetched_at)],
+    [tr("meta_prompt"), promptVersionLabel()]
   ];
   for (const [label, value] of cards) {
     const card = div("meta-card");
@@ -346,6 +373,7 @@ function renderAnalysis() {
   byId("resultsTitle").textContent = tr("results");
   byId("resultsCount").textContent = String(visibleFindings.length);
 
+  renderAnalysisSummary();
   renderDocumentHighlights(state.parsedText, visibleFindings);
   renderFindingsList(visibleFindings);
   renderRefutedSection(refutedFindings);
@@ -353,6 +381,24 @@ function renderAnalysis() {
   renderHistory();
   renderRawJsonPanel();
   renderMetaGrid();
+}
+
+// Old-site summary line under the results header:
+// "Analüüsitud: 80 474 märki · Dokumendid: eelnõu · Prompt: ic-v1"
+function renderAnalysisSummary() {
+  const host = byId("analysisSummary");
+  if (!host) {
+    return;
+  }
+  const chars = Number(state.document?.text_length ?? state.parsedText.length ?? 0);
+  const formattedChars = new Intl.NumberFormat("et-EE").format(chars);
+  const docType = state.document?.document_type || "eelnõu";
+  const version = state.analysis?.prompt_version || state.currentHistory?.prompt_version || "-";
+  host.textContent = [
+    `${tr("summary_analyzed")}: ${formattedChars} ${tr("summary_chars")}`,
+    `${tr("summary_documents")}: ${docType}`,
+    `${tr("summary_prompt")}: ${version}`
+  ].join(" · ");
 }
 
 function renderDocumentHighlights(parsedText, visibleFindings) {
@@ -467,7 +513,7 @@ function renderFindingCard(finding, options) {
   card.dataset.findingId = String(finding.id);
 
   const top = div("card-topline");
-  top.appendChild(span(`badge severity ${safeSeverity(finding.severity)}`, safeSeverity(finding.severity)));
+  top.appendChild(span(`badge severity ${safeSeverity(finding.severity)}`, severityLabel(finding.severity)));
   top.appendChild(span("badge", categoryLabel(finding.category)));
   top.appendChild(sourceBadge(finding.source));
   const agreement = agreementBadge(finding);
@@ -897,7 +943,7 @@ function renderHistory() {
   const details = document.createElement("details");
   details.className = "info-panel history-panel";
   const summary = document.createElement("summary");
-  summary.textContent = tr("history");
+  summary.textContent = `${tr("history")} (${state.history.length})`;
   details.appendChild(summary);
 
   const list = div("history-list");

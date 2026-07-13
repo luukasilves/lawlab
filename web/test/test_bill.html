@@ -45,6 +45,7 @@
       <h2 id="resultsTitle"></h2>
       <span id="resultsCount"></span>
     </div>
+    <div id="analysisSummary"></div>
     <div id="findingsList"></div>
     <div id="refutedSection"></div>
     <div id="pipelinePanel"></div>
@@ -296,8 +297,27 @@ try {
 
   assert(document.getElementById("finding-B").textContent.includes("Kooskõla: 4/5"), "assert-agreement-badge: missing agreement text");
 
+  const severityBadge = document.querySelector("#finding-A .badge.severity");
+  assert(severityBadge?.textContent === "Kõrge", `assert-severity-word: got ${severityBadge?.textContent}`);
+  assert(severityBadge?.classList.contains("HIGH"), "assert-severity-word: missing HIGH class");
+  const mediumBadge = document.querySelector("#finding-B .badge.severity");
+  assert(mediumBadge?.textContent === "Keskmine", `assert-severity-word: got ${mediumBadge?.textContent}`);
+
+  const metaGridText = document.getElementById("metaGrid").textContent;
+  assert(metaGridText.includes("Prompt versioon"), "assert-prompt-card: missing label");
+  assert(metaGridText.includes("prompt-v3 — Tõlgenduslik valim"), "assert-prompt-card: missing version — pass name value");
+
+  const summaryLine = document.getElementById("analysisSummary").textContent;
+  assert(
+    summaryLine.startsWith("Analüüsitud: ") && summaryLine.includes(" märki")
+      && summaryLine.includes("Dokumendid: eelnõu") && summaryLine.includes("Prompt: prompt-v3"),
+    `assert-analysis-summary: got ${summaryLine}`
+  );
+
   const historyRows = document.querySelectorAll(".history-row");
   assert(historyRows.length === 2, `assert-history-renders: expected 2 rows, got ${historyRows.length}`);
+  const historySummary = document.querySelector("#historyPanel summary");
+  assert(historySummary?.textContent === "Analüüside ajalugu (2)", `assert-history-count: got ${historySummary?.textContent}`);
 
   const result = document.getElementById("test-result");
   result.className = "pass";

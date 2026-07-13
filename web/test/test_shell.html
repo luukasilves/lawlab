@@ -52,6 +52,22 @@
       renderHeader('bills');
       renderFooter('2026-07-12T10:00:00Z');
       assert('header-renders', document.querySelector('.wordmark')?.textContent === 'Apsakaleidja', 'wordmark missing');
+      assert(
+        'tagline-parity',
+        document.querySelector('.tagline')?.textContent === 'AI analüüsib Riigikogu seaduseelnõusid',
+        `got ${document.querySelector('.tagline')?.textContent}`
+      );
+      const methodLink = document.querySelector('.site-nav a[href="/metoodika"]');
+      assert('nav-about', methodLink?.textContent === 'About', `got ${methodLink?.textContent}`);
+      const source = document.querySelector('.footer-source');
+      assert(
+        'footer-source',
+        source?.textContent === 'Andmeallikas: Riigikogu' &&
+          source?.querySelector('a[href="https://www.riigikogu.ee"]') != null &&
+          document.querySelector('.footer-links a[href="https://github.com/luukasilves/lawlab"]') != null &&
+          document.querySelector('.footer-links a[href="/metoodika#andmed"]') != null,
+        `got ${source?.textContent}`
+      );
     } catch (error) {
       assert('header-renders', false, error.message);
     }

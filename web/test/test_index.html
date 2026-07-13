@@ -78,6 +78,7 @@
         bill_number: `EELN-${String(index).padStart(3, "0")}`,
         title: `Tavaline eelnõu ${index}`,
         status: index % 5 === 0 ? null : (index % 2 === 0 ? "PROCESSED" : "IN_PROCESS"),
+        active_stage: index % 5 === 0 ? null : (index % 2 === 0 ? "MENETLUSSE_VOETUD" : "I_LUGEMINE_LOPETATUD"),
         last_seen_at: iso(index + 1),
         document_id: `doc-${index}`,
         doc_version: 1,
@@ -143,6 +144,10 @@
       title: "Unikaalne otsingupealkiri kohaliku teenuse kohta",
       low_count: 2,
     });
+    Object.assign(FIXTURE_ROWS[2], {
+      title: "Koondstaatusega eelnõu kolmas",
+      active_stage: null,
+    });
 
     const FIXTURE_INGEST = [{
       finished_at: new Date(Date.now() - 50 * hour).toISOString(),
@@ -181,23 +186,53 @@
 
     const SEARCH_DELAY_MS = 150;
 
-    function runStatCounts() {
+    function rowsWithSeverity(level) {
+      return FIXTURE_ROWS.filter((row) => Number(row[`${level}_count`]) > 0).length;
+    }
+
+    function runStatCards() {
+      const names = ["total", "high", "medium", "low"];
+      const expectedLabels = ["Eelnõusid kokku", "Kõrge risk", "Keskmine risk", "Madal risk"];
+      const labels = names.map((name) => card(name)?.querySelector(".stat-label")?.textContent);
+      appendAssert("stat-card-labels", JSON.stringify(labels) === JSON.stringify(expectedLabels), labels.join("|"));
+
+      const analyzed = FIXTURE_ROWS.filter((row) => row.analysis_id != null).length;
+      const subs = names.map((name) => card(name)?.querySelector(".stat-sub")?.textContent);
+      const subsOk = subs[0] === `${analyzed} ${STRINGS.stat_analyzed_sub}`
+        && subs.slice(1).every((sub) => sub === STRINGS.stat_click_filter);
+      appendAssert("stat-card-subtexts", subsOk, subs.join("|"));
+
       const expected = {
         total: FIXTURE_ROWS.length,
-        analyzed: FIXTURE_ROWS.filter((row) => row.analysis_id != null).length,
-        high: FIXTURE_ROWS.filter((row) => Number(row.high_count) > 0).length,
-        findings: FIXTURE_ROWS.reduce((sum, row) => sum + Number(row.high_count || 0) + Number(row.medium_count || 0) + Number(row.low_count || 0), 0),
+        high: rowsWithSeverity("high"),
+        medium: rowsWithSeverity("medium"),
+        low: rowsWithSeverity("low"),
       };
-      const actual = Object.fromEntries(["total", "analyzed", "high", "findings"].map((name) => [
+      const actual = Object.fromEntries(names.map((name) => [
         name,
         Number(card(name).querySelector(".stat-value").textContent),
       ]));
       appendAssert("stat-counts", JSON.stringify(actual) === JSON.stringify(expected), `${JSON.stringify(actual)} expected ${JSON.stringify(expected)}`);
     }
 
-    function runCardFilter() {
-      card("high").click();
-      appendAssert("card-filter", visibleRows().length === 3, `rows=${visibleRows().length}`);
+    function runRiskCardFilters() {
+      for (const level of ["high", "medium", "low"]) {
+        card(level).click();
+        appendAssert(
+          `card-filter-${level}`,
+          visibleRows().length === rowsWithSeverity(level) && card(level).getAttribute("aria-pressed") === "true",
+          `rows=${visibleRows().length} expected=${rowsWithSeverity(level)}`
+        );
+        card(level).click();
+        appendAssert(
+          `card-toggle-${level}`,
+          visibleRows().length === 25 && card(level).getAttribute("aria-pressed") === "false",
+          `rows=${visibleRows().length}`
+        );
+      }
+      card("medium").click();
+      card("total").click();
+      appendAssert("card-total-clears", visibleRows().length === 25, `rows=${visibleRows().length}`);
     }
 
     async function runSearchFilter() {
@@ -211,11 +246,33 @@
 
     async function runStatusFilter() {
       await resetFilters();
-      status.value = "PROCESSED";
+      const optionValues = Array.from(status.options).map((option) => option.value);
+      const optionsOk = optionValues.join("|") === "all|I_LUGEMINE_LOPETATUD|MENETLUSSE_VOETUD"
+        && status.options[0].textContent === STRINGS.status_all;
+      appendAssert("status-options", optionsOk, optionValues.join("|"));
+
+      status.value = "MENETLUSSE_VOETUD";
       status.dispatchEvent(new Event("change", { bubbles: true }));
       const rows = visibleRows();
-      const expected = FIXTURE_ROWS.filter((row) => row.status === "PROCESSED").length;
-      appendAssert("status-filter", rows.length === expected && rows.every((row) => row.dataset.status === "PROCESSED"), `rows=${rows.length} expected=${expected}`);
+      const expected = FIXTURE_ROWS.filter((row) => row.active_stage === "MENETLUSSE_VOETUD").length;
+      appendAssert(
+        "status-filter",
+        rows.length === expected && rows.every((row) => row.dataset.status === "MENETLUSSE_VOETUD" && row.children[2].textContent === "MENETLUSSE_VOETUD"),
+        `rows=${rows.length} expected=${expected}`
+      );
+    }
+
+    async function runStageFallback() {
+      await resetFilters();
+      search.value = "Koondstaatusega eelnõu";
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+      await wait(SEARCH_DELAY_MS + 30);
+      const rows = visibleRows();
+      appendAssert(
+        "stage-fallback",
+        rows.length === 1 && rows[0].children[2].textContent === STRINGS.status_IN_PROCESS,
+        rows[0]?.children[2]?.textContent || `rows=${rows.length}`
+      );
     }
 
     function runStaleBanner() {
@@ -241,10 +298,12 @@
       appendAssert("pagination", !!pageTwo && firstPageCount === 25 && secondPageCount === 5, `first=${firstPageCount} second=${secondPageCount}`);
     }
 
-    runStatCounts();
-    runCardFilter();
+    appendAssert("search-placeholder", search.placeholder === STRINGS.search_ph, search.placeholder);
+    runStatCards();
+    runRiskCardFilters();
     await runSearchFilter();
     await runStatusFilter();
+    await runStageFallback();
     runStaleBanner();
     await runNoTextState();
     await runPagination();

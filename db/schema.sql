@@ -177,7 +177,10 @@ select
   coalesce(fc.high, 0)    as high_count,
   coalesce(fc.medium, 0)  as medium_count,
   coalesce(fc.low, 0)     as low_count,
-  coalesce(fc.refuted, 0) as refuted_count
+  coalesce(fc.refuted, 0) as refuted_count,
+  -- detailed Riigikogu stage (raw enum, e.g. MENETLUSSE_VOETUD), appended last
+  -- so `create or replace view` stays valid against the deployed column order.
+  b.api_data->>'activeDraftStatus' as active_stage
 from bills b
 left join lateral (
   select id, version, fetched_at, text_length, extraction_method

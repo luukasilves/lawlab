@@ -102,7 +102,7 @@
   .meta-grid {
     display: grid;
     gap: 10px;
-    grid-template-columns: repeat(3, minmax(150px, 1fr));
+    grid-template-columns: repeat(4, minmax(150px, 1fr));
     margin-top: 16px;
     max-width: 980px;
   }
@@ -215,6 +215,16 @@
   .count-text {
     color: var(--muted);
     font-size: 13px;
+  }
+
+  .analysis-summary {
+    color: var(--soft);
+    font-size: 12.5px;
+    margin: -4px 0 10px;
+  }
+
+  .analysis-summary:empty {
+    display: none;
   }
 
   .finding-card,
@@ -581,6 +591,7 @@
       <h2 id="resultsTitle"></h2>
       <span class="count-text" id="resultsCount"></span>
     </div>
+    <div class="analysis-summary" id="analysisSummary"></div>
     <div id="findingsList"></div>
     <div id="refutedSection"></div>
     <div id="pipelinePanel" class="panel-block"></div>

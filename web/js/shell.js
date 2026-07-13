@@ -46,15 +46,18 @@ function wireLangToggle(root) {
   });
 }
 
+// `active` is either a nav name ('bills'/'method') rendered into #app-header,
+// or a mount element (index.js hands us its own #app-shell-header div).
 export function renderHeader(active) {
   document.documentElement.lang = getLang();
-  const mount = document.querySelector('#app-header');
+  const mount = active instanceof Element ? active : document.querySelector('#app-header');
+  const activeName = active instanceof Element ? (active.dataset.active || '') : active;
   if (!mount) {
     return;
   }
 
-  const billsActive = isActive('bills', active);
-  const methodActive = isActive('method', active);
+  const billsActive = isActive('bills', activeName);
+  const methodActive = isActive('method', activeName);
   const nextLang = getLang() === 'en' ? 'ET' : 'EN';
 
   mount.innerHTML = `
@@ -77,25 +80,29 @@ export function renderHeader(active) {
   wireLangToggle(mount);
 }
 
+// `freshnessISO` is either an ISO timestamp rendered into #app-footer, or a
+// mount element (index.js shows freshness in its own line instead).
 export function renderFooter(freshnessISO = null) {
   document.documentElement.lang = getLang();
-  const mount = document.querySelector('#app-footer');
+  const mount = freshnessISO instanceof Element ? freshnessISO : document.querySelector('#app-footer');
+  const iso = freshnessISO instanceof Element ? (window.LAWLAB_FRESHNESS_ISO || null) : freshnessISO;
   if (!mount) {
     return;
   }
 
-  const formatted = formatDateTime(freshnessISO);
-  const stale = isStale(freshnessISO);
+  const formatted = formatDateTime(iso);
+  const stale = isStale(iso);
 
   mount.innerHTML = `
     <footer class="site-footer">
       <div class="container footer-inner">
         <div class="footer-links">
+          <span class="footer-source">${t('footer_source')}: <a href="https://www.riigikogu.ee">Riigikogu</a></span>
           <a href="https://github.com/luukasilves/lawlab">GitHub</a>
           <a href="/metoodika#andmed" data-i18n="api_docs"></a>
         </div>
         <div class="last-updated" data-last-updated>
-          ${formatted ? `<span>${t('fresh_updated')}: <time datetime="${freshnessISO}">${formatted}</time></span>` : ''}
+          ${formatted ? `<span>${t('fresh_updated')}: <time datetime="${iso}">${formatted}</time></span>` : ''}
         </div>
       </div>
       ${stale ? `<div class="container"><div class="banner-stale">${t('fresh_stale')}</div></div>` : ''}

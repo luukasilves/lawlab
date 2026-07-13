@@ -50,13 +50,27 @@ async function run() {
   setLang("et");
   window.LawlabMetoodika.init(fixture);
 
+  assert(document.querySelector("h1")?.textContent === "About" && document.title === "About", "about-title");
+
+  const sectionHeads = text("section h2, section h3");
+  const parityHeads = ["Andmeallikad", "Riigikogu API", "Dokumendid", "Andmete uuendamine", "AI mudel", "Teksti piirang", "Süsteemi promptid"];
+  assert(parityHeads.every((head) => sectionHeads.includes(head)), "parity-sections");
+  assert(
+    document.querySelector('.prompt-detail[data-pass-id="interpretive"] summary')?.textContent === "Näita ic-v1 prompti",
+    "show-prompt-label"
+  );
+
   const checksText = text("#checks-table tbody");
   const etCheckNames = ["Paragrahvide numeratsioon", "Muutmispunktide numeratsioon", "Jõustumissätte viited", "Protsendijaotuste aritmeetika"];
   assert(etCheckNames.every((name) => checksText.includes(name)), "checks-table");
 
   assert(
-    document.querySelector('.prompt-detail[data-pass-id="interpretive"] .system-prompt').textContent.includes("GENERATED-AT-INTEGRATION") &&
-      document.querySelector('.prompt-detail[data-pass-id="refute"] .system-prompt').textContent.includes("GENERATED-AT-INTEGRATION"),
+    ["interpretive", "refute"].every((passId) => {
+      const detail = document.querySelector(`.prompt-detail[data-pass-id="${passId}"]`);
+      return detail
+        && detail.querySelector(".system-prompt")?.textContent.trim().length > 50
+        && detail.querySelector(".user-template")?.textContent.trim().length > 0;
+    }),
     "prompts-visible"
   );
 
@@ -78,6 +92,7 @@ async function run() {
   const enChecks = text("#checks-table tbody");
   const enCheckNames = ["Section numbering", "Amendment instruction numbering", "Entry-into-force references", "Percentage allocation arithmetic"];
   assert(enCheckNames.every((name) => enChecks.includes(name)), "lang-en");
+  assert(document.querySelector("h1")?.textContent === "About" && document.title === "About", "about-title-en");
 
   result.textContent = "ALL-PASS";
 }

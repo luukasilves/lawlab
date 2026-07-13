@@ -3,7 +3,7 @@ let lastMethodology = null;
 
 const TEXT = {
   et: {
-    pageTitle: "Metoodika ja läbipaistvus",
+    pageTitle: "About",
     intro:
       "Apsakaleidja otsib seaduseelnõu tekstist normitehnilisi ja sisulise kooskõla riske. Leiud on masinanalüüs, mitte õiguslik hinnang: need aitavad tähelepanu suunata, kuid lõpliku järelduse teeb inimene eelnõu ja konteksti põhjal.",
     engine: "Mootor",
@@ -11,6 +11,19 @@ const TEXT = {
     model: "Mudel",
     sampling: "Valim",
     temperature: "Temperatuur",
+    dataSources: "Andmeallikad",
+    riigikoguApiTitle: "Riigikogu API",
+    riigikoguApiBody: "Eelnõude nimekiri ja metaandmed loetakse Riigikogu avalikust API-st:",
+    documentsTitle: "Dokumendid",
+    documentsBody: "Analüüsitakse eelnõu põhiteksti DOCX-failist. NB: seletuskirja veel ei analüüsita.",
+    refreshTitle: "Andmete uuendamine",
+    refreshBody: "Andmed uuenevad automaatselt iga päev kell 05:00 UTC. Värskuse ajatempel tuleb pipeline_runs tabeli viimasest õnnestunud laadimisest.",
+    aiModel: "AI mudel",
+    samplingLine: (s) => `Valim: ${s.samples ?? "?"} sõltumatut analüüsi, avaldamise künnis ${s.min_agreement ?? "?"}/${s.samples ?? "?"}, temperatuur ${s.temperature ?? "?"}.`,
+    textLimitTitle: "Teksti piirang",
+    textLimitBody: "Teksti ei kärbita: vana versioon piiras analüüsi 30 000 märgiga, uus versioon analüüsib kogu teksti.",
+    systemPrompts: "Süsteemi promptid",
+    showPrompt: (version) => `Näita ${version} prompti`,
     pipeline: "Analüüsi käik",
     checks: "Kontrollid",
     name: "Nimi",
@@ -20,8 +33,6 @@ const TEXT = {
     version: "Versioon",
     on: "sees",
     off: "välja lülitatud",
-    passes: "Keelemudeli sammud",
-    prompts: "Promptid",
     systemPrompt: "System prompt",
     userTemplate: "User template",
     promptSha: "Prompt SHA",
@@ -48,7 +59,7 @@ const TEXT = {
     }
   },
   en: {
-    pageTitle: "Methodology and transparency",
+    pageTitle: "About",
     intro:
       "Apsakaleidja searches the bill text for legislative-drafting and substantive consistency risks. Findings are machine analysis, not legal advice: they point attention to possible issues, while a person makes the final assessment from the bill and its context.",
     engine: "Engine",
@@ -56,6 +67,19 @@ const TEXT = {
     model: "Model",
     sampling: "Sampling",
     temperature: "Temperature",
+    dataSources: "Data sources",
+    riigikoguApiTitle: "Riigikogu API",
+    riigikoguApiBody: "The bill list and metadata are read from the public Riigikogu API:",
+    documentsTitle: "Documents",
+    documentsBody: "The main bill text is analysed from the DOCX file. Note: the explanatory memorandum is not analysed yet.",
+    refreshTitle: "Data refresh",
+    refreshBody: "Data refreshes automatically every day at 05:00 UTC. The freshness timestamp comes from the last successful run in the pipeline_runs table.",
+    aiModel: "AI model",
+    samplingLine: (s) => `Sampling: ${s.samples ?? "?"} independent analyses, publication threshold ${s.min_agreement ?? "?"}/${s.samples ?? "?"}, temperature ${s.temperature ?? "?"}.`,
+    textLimitTitle: "Text limit",
+    textLimitBody: "No truncation: the previous version capped analysis at 30,000 characters; the new version analyses the full text.",
+    systemPrompts: "System prompts",
+    showPrompt: (version) => `Show ${version} prompt`,
     pipeline: "Analysis flow",
     checks: "Checks",
     name: "Name",
@@ -65,8 +89,6 @@ const TEXT = {
     version: "Version",
     on: "enabled",
     off: "disabled",
-    passes: "Language-model steps",
-    prompts: "Prompts",
     systemPrompt: "System prompt",
     userTemplate: "User template",
     promptSha: "Prompt SHA",
@@ -173,6 +195,46 @@ function renderHero(root, methodology) {
   root.appendChild(hero);
 }
 
+// Old-site lead sections: Andmeallikad (Riigikogu API / Dokumendid /
+// Andmete uuendamine) and AI mudel (model id, sampling, Teksti piirang).
+function renderDataSources(root) {
+  const copy = t();
+  const node = section(null, copy.dataSources);
+
+  node.appendChild(el("h3", null, copy.riigikoguApiTitle));
+  const apiBody = el("p", null, `${copy.riigikoguApiBody} `);
+  const apiLink = el("a", null, "api.riigikogu.ee");
+  apiLink.href = "https://api.riigikogu.ee";
+  apiBody.appendChild(apiLink);
+  node.appendChild(apiBody);
+
+  node.appendChild(el("h3", null, copy.documentsTitle));
+  node.appendChild(el("p", null, copy.documentsBody));
+
+  node.appendChild(el("h3", null, copy.refreshTitle));
+  node.appendChild(el("p", null, copy.refreshBody));
+
+  root.appendChild(node);
+}
+
+function renderModel(root, methodology) {
+  const copy = t();
+  const engine = methodology.engine || {};
+  const sampling = engine.sampling || {};
+  const node = section(null, copy.aiModel);
+
+  const modelLine = engine.provider
+    ? `${copy.model}: ${engine.model || "?"} (${engine.provider})`
+    : `${copy.model}: ${engine.model || "?"}`;
+  node.appendChild(el("p", null, modelLine));
+  node.appendChild(el("p", null, copy.samplingLine(sampling)));
+
+  node.appendChild(el("h3", null, copy.textLimitTitle));
+  node.appendChild(el("p", null, copy.textLimitBody));
+
+  root.appendChild(node);
+}
+
 function renderPipeline(root, methodology) {
   const copy = t();
   const node = section(null, copy.pipeline);
@@ -226,7 +288,7 @@ function renderChecks(root, methodology) {
 
 function renderPasses(root, methodology) {
   const copy = t();
-  const node = section(null, copy.passes);
+  const node = section(null, copy.systemPrompts);
   const list = el("div", "passes");
   for (const pass of methodology.passes || []) {
     const card = el("article", "pass-card");
@@ -237,7 +299,7 @@ function renderPasses(root, methodology) {
 
     const details = el("details", "prompt-detail");
     details.dataset.passId = pass.id;
-    details.appendChild(el("summary", null, copy.prompts));
+    details.appendChild(el("summary", null, copy.showPrompt(pass.version || pass.id)));
     details.appendChild(el("h3", null, copy.systemPrompt));
     details.appendChild(el("pre", "system-prompt", pass.system_prompt || ""));
     details.appendChild(el("h3", null, copy.userTemplate));
@@ -348,12 +410,14 @@ function init(methodology) {
   const root = document.getElementById("metoodika-root");
   if (!root) return;
   document.documentElement.lang = lang();
-  document.title = lang() === "en" ? "Apsakaleidja — methodology" : "Apsakaleidja — metoodika";
+  document.title = "About";
   clear(root);
   renderHero(root, methodology);
+  renderDataSources(root);
+  renderModel(root, methodology);
+  renderPasses(root, methodology);
   renderPipeline(root, methodology);
   renderChecks(root, methodology);
-  renderPasses(root, methodology);
   renderCategories(root, methodology);
   renderLimitations(root, methodology);
   renderData(root, methodology);

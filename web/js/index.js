@@ -97,15 +97,6 @@ function setupStaticText() {
     els.search.setAttribute("aria-label", t("search_ph"));
   }
 
-  if (els.status) {
-    els.status.innerHTML = [
-      ["all", t("status_all")],
-      ["IN_PROCESS", t("status_IN_PROCESS")],
-      ["PROCESSED", t("status_PROCESSED")],
-      ["unknown", t("status_unknown")],
-    ].map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`).join("");
-  }
-
   const headings = {
     number: "th_number",
     title: "th_title",
@@ -186,9 +177,9 @@ function sortedRows() {
 
 function rowMatchesStat(row) {
   if (!state.statFilter) return true;
-  if (state.statFilter === "analyzed") return hasAnalysis(row);
   if (state.statFilter === "high") return asNumber(row.high_count) > 0;
-  if (state.statFilter === "findings") return rowFindingTotal(row) > 0;
+  if (state.statFilter === "medium") return asNumber(row.medium_count) > 0;
+  if (state.statFilter === "low") return asNumber(row.low_count) > 0;
   return true;
 }
 
@@ -200,8 +191,7 @@ function rowMatchesSearch(row) {
 
 function rowMatchesStatus(row) {
   if (state.status === "all") return true;
-  if (state.status === "unknown") return !row.status;
-  return row.status === state.status;
+  return (row.active_stage || "") === state.status;
 }
 
 function filteredRows() {
@@ -213,7 +203,8 @@ function stats() {
     total: state.rows.length,
     analyzed: state.rows.filter(hasAnalysis).length,
     high: state.rows.filter((row) => asNumber(row.high_count) > 0).length,
-    findings: state.rows.reduce((sum, row) => sum + rowFindingTotal(row), 0),
+    medium: state.rows.filter((row) => asNumber(row.medium_count) > 0).length,
+    low: state.rows.filter((row) => asNumber(row.low_count) > 0).length,
   };
 }
 
@@ -221,18 +212,19 @@ function renderStats() {
   if (!els.statCards) return;
   const counts = stats();
   const cards = [
-    ["total", t("stat_total"), counts.total],
-    ["analyzed", t("stat_analyzed"), counts.analyzed],
-    ["high", t("stat_high"), counts.high],
-    ["findings", t("stat_findings"), counts.findings],
+    ["total", t("stat_total"), counts.total, `${counts.analyzed} ${t("stat_analyzed_sub")}`],
+    ["high", t("stat_high"), counts.high, t("stat_click_filter")],
+    ["medium", t("stat_medium"), counts.medium, t("stat_click_filter")],
+    ["low", t("stat_low"), counts.low, t("stat_click_filter")],
   ];
 
-  els.statCards.innerHTML = cards.map(([key, label, value]) => {
+  els.statCards.innerHTML = cards.map(([key, label, value, sub]) => {
     const active = key === "total" ? state.statFilter == null : state.statFilter === key;
     return `
       <button class="stat-card${active ? " active" : ""}" type="button" data-filter-card="${key}" aria-pressed="${active ? "true" : "false"}">
         <span class="stat-value">${escapeHtml(value)}</span>
         <span class="stat-label">${escapeHtml(label)}</span>
+        <span class="stat-sub">${escapeHtml(sub)}</span>
       </button>
     `;
   }).join("");
@@ -263,9 +255,20 @@ function renderFreshness() {
   }
 }
 
-function statusText(status) {
-  if (!status) return t("status_unknown");
-  return t(`status_${status}`);
+// Detailed Riigikogu stage (raw enum, as the old site showed it) with a
+// fallback to the coarse proceedingStatus mapping for rows without one.
+function statusText(row) {
+  if (row.active_stage) return row.active_stage;
+  if (!row.status) return t("status_unknown");
+  return t(`status_${row.status}`);
+}
+
+function renderStatusOptions() {
+  if (!els.status) return;
+  const stages = Array.from(new Set(state.rows.map((row) => row.active_stage).filter(Boolean)))
+    .sort((left, right) => left.localeCompare(right, "et"));
+  els.status.innerHTML = [["all", t("status_all")], ...stages.map((stage) => [stage, stage])]
+    .map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`).join("");
 }
 
 function renderFindingCell(row) {
@@ -295,10 +298,10 @@ function renderRows(rows) {
     const href = `/bill/${row.bill_id ?? ""}`;
     const changedAt = formatDateTime(row.doc_fetched_at || row.last_seen_at);
     return `
-      <tr data-href="${escapeHtml(href)}" data-status="${escapeHtml(row.status || "unknown")}" tabindex="0">
+      <tr data-href="${escapeHtml(href)}" data-status="${escapeHtml(row.active_stage || row.status || "unknown")}" tabindex="0">
         <td><a href="${escapeHtml(href)}">${escapeHtml(row.bill_number || row.bill_id || "")}</a></td>
         <td>${escapeHtml(row.title || "")}</td>
-        <td>${escapeHtml(statusText(row.status))}</td>
+        <td>${escapeHtml(statusText(row))}</td>
         <td>${escapeHtml(changedAt)}</td>
         <td>${renderFindingCell(row)}</td>
       </tr>
@@ -360,6 +363,7 @@ function init(rows = [], ingest = []) {
   mountShell(els.shellHeader, renderHeader);
   mountShell(els.shellFooter, renderFooter);
   setupStaticText();
+  renderStatusOptions();
 
   if (els.search) els.search.value = "";
   if (els.status) els.status.value = "all";
