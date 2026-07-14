@@ -5,7 +5,7 @@ const TEXT = {
   et: {
     pageTitle: "About",
     intro:
-      "Apsakaleidja otsib seaduseelnõu tekstist normitehnilisi ja sisulise kooskõla riske. Leiud on masinanalüüs, mitte õiguslik hinnang: need aitavad tähelepanu suunata, kuid lõpliku järelduse teeb inimene eelnõu ja konteksti põhjal.",
+      "Apsakaleidja otsib seaduseelnõu tekstist normitehnilisi ja sisulise kooskõla riske. Leiud on masinanalüüs, mitte õiguslik hinnang: need aitavad tähelepanu suunata, kuid lõpliku otsuse teeb inimene eelnõu ja selle konteksti põhjal.",
     engine: "Mootor",
     provider: "Teenusepakkuja",
     model: "Mudel",
@@ -15,9 +15,9 @@ const TEXT = {
     riigikoguApiTitle: "Riigikogu API",
     riigikoguApiBody: "Eelnõude nimekiri ja metaandmed loetakse Riigikogu avalikust API-st:",
     documentsTitle: "Dokumendid",
-    documentsBody: "Analüüsitakse eelnõu põhiteksti DOCX-failist. NB: seletuskirja veel ei analüüsita.",
+    documentsBody: "Analüüsitakse eelnõu põhiteksti DOCX-failist. NB! Seletuskirja veel ei analüüsita.",
     refreshTitle: "Andmete uuendamine",
-    refreshBody: "Andmed uuenevad automaatselt iga päev kell 05:00 UTC. Värskuse ajatempel tuleb pipeline_runs tabeli viimasest õnnestunud laadimisest.",
+    refreshBody: "Andmed uuenevad automaatselt iga päev kell 05:00 UTC. Värskuse ajatempel pärineb pipeline_runs tabeli viimasest õnnestunud laadimisest.",
     aiModel: "AI mudel",
     samplingLine: (s) => `Valim: ${s.samples ?? "?"} sõltumatut analüüsi, avaldamise künnis ${s.min_agreement ?? "?"}/${s.samples ?? "?"}, temperatuur ${s.temperature ?? "?"}.`,
     textLimitTitle: "Teksti piirang",
@@ -46,24 +46,24 @@ const TEXT = {
     examples: "Näited",
     repo: "GitHubi repositoorium",
     gold:
-      "Kontrollkomplekt (gold set) on avalik tabelis eval_labels.",
+      "Kontrollkomplekt (gold set) on avalik eval_labels tabelis.",
     story: "Lugu",
     downloads: "Lae andmed alla",
     downloadsIntro:
-      "Kogu analüüside andmebaas on ühe klõpsuga alla laaditav. Failid koostatakse otse avalikust andmebaasist, seega on need alati sama värsked kui leht ise.",
+      "Kogu analüüside andmebaasi saab alla laadida ühe klõpsuga. Failid koostatakse otse avalikust andmebaasist, seega on need alati sama värsked kui leht ise.",
     downloadsNote:
       "Eelnõude täistekstid failidesse ei mahu — need on kättesaadavad API kaudu (tabel bill_documents, veerg parsed_text).",
     downloading: (n) => `Laen... ${n} rida`,
     downloaded: (n) => `${n} rida`,
     downloadFailed: "Allalaadimine ebaõnnestus",
     datasets: {
-      overview: ["Ülevaade", "Üks rida eelnõu kohta: staatus, viimane analüüs, leidude arv raskusastmeti."],
+      overview: ["Ülevaade", "Üks rida iga eelnõu kohta: staatus, viimane analüüs, leidude arv raskusastmete lõikes."],
       findings: ["Leiud", "Kõik leiud koos eelnõu numbri ja pealkirjaga — ka skeptiku poolt ümber lükatud."],
       analyses: ["Analüüsid", "Iga analüüsi mootorimanifest, statistika, kestus ja maksumus."],
       samples: ["Mudeli toorvastused", "Iga LLM-päringu töötlemata vastus (~15 MB)."],
       bills: ["Eelnõud", "Eelnõude metaandmed Riigikogu API-st."]
     },
-    loadError: "Metoodika andmeid ei õnnestunud laadida.",
+    loadError: "Metoodika andmete laadimine ebaõnnestus.",
     pipelineText: {
       parse: ["Teksti lugemine", "Eelnõu põhitekst eraldatakse ja jagatakse analüüsitavateks osadeks."],
       deterministic: ["Deterministlikud kontrollid", "Reeglid otsivad mehaanilisi vigu, mida saab hinnata ilma keelemudelita."],
