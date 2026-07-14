@@ -26,6 +26,22 @@ export function t(key) {
   return STRINGS[key] || key;
 }
 
+export function getLang() {
+  return "et";
+}
+
+// Mirrors the real helper: prefix a canonical path for the language.
+export function withLang(canonicalPath, lang = "et") {
+  let path = canonicalPath || "/";
+  if (!path.startsWith("/")) {
+    path = `/${path}`;
+  }
+  if (lang !== "en") {
+    return path;
+  }
+  return path === "/" ? "/en" : `/en${path}`;
+}
+
 export function applyStatic(root = document) {
   root.querySelectorAll("[data-i18n]").forEach((node) => {
     node.textContent = t(node.dataset.i18n);

@@ -8,6 +8,10 @@
   "assets": {
     "directory": "./web",
     "binding": "ASSETS",
-    "html_handling": "none"
+    "html_handling": "none",
+    // The router worker owns every route (incl. /bill/:id and the /en language
+    // prefix); without this, the assets layer 404s unmatched paths before the
+    // worker runs. The worker falls through to env.ASSETS for real files.
+    "run_worker_first": true
   }
 }

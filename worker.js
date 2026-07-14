@@ -7,9 +7,13 @@ export default {
     const page = (name) =>
       env.ASSETS.fetch(new Request(new URL(`/${name}.html`, url), request));
 
-    if (url.pathname === "/" || url.pathname === "/index.html") return page("index");
-    if (url.pathname.startsWith("/bill/")) return page("bill");
-    if (url.pathname === "/metoodika" || url.pathname === "/metoodika/") return page("metoodika");
+    // English pages live under an /en prefix (same HTML; the page JS reads the
+    // language from the URL path). The browser URL is preserved because these
+    // serve an asset rather than redirect.
+    const p = url.pathname;
+    if (p === "/" || p === "/index.html" || p === "/en" || p === "/en/") return page("index");
+    if (p.startsWith("/bill/") || p.startsWith("/en/bill/")) return page("bill");
+    if (p === "/metoodika" || p === "/metoodika/" || p === "/en/metoodika" || p === "/en/metoodika/") return page("metoodika");
     return env.ASSETS.fetch(request);
   },
 };

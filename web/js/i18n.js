@@ -130,7 +130,51 @@ function normalizeLang(lang) {
   return lang === 'en' ? 'en' : DEFAULT_LANG;
 }
 
+// The URL is the single source of truth for language: English pages live under
+// an `/en` path prefix (`/en`, `/en/bill/:id`, `/en/metoodika`) so they are
+// linkable and shareable. Everything else is Estonian (the default, unprefixed).
+export function langFromPath(pathname) {
+  const path = pathname != null
+    ? pathname
+    : (typeof window !== 'undefined' ? window.location?.pathname ?? '' : '');
+  return /^\/en(\/|$)/.test(path) ? 'en' : DEFAULT_LANG;
+}
+
+// Strip the `/en` prefix to get the canonical (Estonian) path.
+export function stripLang(pathname) {
+  const path = pathname != null
+    ? pathname
+    : (typeof window !== 'undefined' ? window.location?.pathname ?? '/' : '/');
+  const stripped = path.replace(/^\/en(?=\/|$)/, '');
+  return stripped || '/';
+}
+
+// Prefix a canonical (Estonian) path for the given language. `/` becomes `/en`.
+export function withLang(canonicalPath, lang = getLang()) {
+  let path = canonicalPath || '/';
+  if (!path.startsWith('/')) {
+    path = `/${path}`;
+  }
+  if (normalizeLang(lang) !== 'en') {
+    return path;
+  }
+  return path === '/' ? '/en' : `/en${path}`;
+}
+
+// Explicit override, set only by setLang() — used by test harnesses and any
+// programmatic caller. In the live site nothing sets it, so getLang() stays
+// purely path-driven and pages render deterministically from their URL.
+let override = null;
+
 export function getLang() {
+  if (override) {
+    return override;
+  }
+  try {
+    return langFromPath();
+  } catch (error) {
+    // Non-browser context; fall back to any stored preference.
+  }
   try {
     return normalizeLang(window.localStorage.getItem(STORAGE_KEY));
   } catch (error) {
@@ -139,13 +183,13 @@ export function getLang() {
 }
 
 export function setLang(lang) {
-  const nextLang = normalizeLang(lang);
+  override = normalizeLang(lang);
   try {
-    window.localStorage.setItem(STORAGE_KEY, nextLang);
+    window.localStorage.setItem(STORAGE_KEY, override);
   } catch (error) {
     // Ignore storage failures; the current render can still use the normalized value.
   }
-  return nextLang;
+  return override;
 }
 
 export function t(key) {

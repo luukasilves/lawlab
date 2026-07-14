@@ -60,3 +60,24 @@ const STRINGS = {
 export function t(key) {
   return STRINGS[key] || key;
 }
+
+export function getLang() {
+  return "et";
+}
+
+export function stripLang(pathname) {
+  const path = pathname || "/";
+  return path.replace(/^\/en(?=\/|$)/, "") || "/";
+}
+
+// Mirrors the real helper so bill.js can build language-aware links in tests.
+export function withLang(canonicalPath, lang = "et") {
+  let path = canonicalPath || "/";
+  if (!path.startsWith("/")) {
+    path = `/${path}`;
+  }
+  if (lang !== "en") {
+    return path;
+  }
+  return path === "/" ? "/en" : `/en${path}`;
+}

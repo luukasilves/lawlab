@@ -27,7 +27,7 @@
   </script>
   <script src="../config.js"></script>
   <script type="module">
-    import { t, setLang } from '../js/i18n.js';
+    import { t, setLang, withLang, stripLang, langFromPath } from '../js/i18n.js';
     import { renderHeader, renderFooter } from '../js/shell.js';
     import { postFeedback } from '../js/api.js';
 
@@ -84,6 +84,42 @@
       assert('i18n-en', t('th_title') === 'Title', `got ${t('th_title')}`);
     } catch (error) {
       assert('i18n-en', false, error.message);
+    }
+
+    try {
+      assert(
+        'lang-routing-helpers',
+        withLang('/', 'et') === '/' &&
+          withLang('/', 'en') === '/en' &&
+          withLang('/bill/abc', 'en') === '/en/bill/abc' &&
+          withLang('/metoodika', 'en') === '/en/metoodika' &&
+          stripLang('/en/bill/abc') === '/bill/abc' &&
+          stripLang('/en') === '/' &&
+          stripLang('/bill/abc') === '/bill/abc' &&
+          langFromPath('/en/metoodika') === 'en' &&
+          langFromPath('/metoodika') === 'et' &&
+          langFromPath('/en') === 'en' &&
+          langFromPath('/english') === 'et',
+        'language path helpers wrong'
+      );
+    } catch (error) {
+      assert('lang-routing-helpers', false, error.message);
+    }
+
+    try {
+      setLang('en');
+      renderHeader('bills');
+      const enBills = document.querySelector('.site-nav a[href="/en"]');
+      const enMethod = document.querySelector('.site-nav a[href="/en/metoodika"]');
+      const enAlt = document.head.querySelector('link[rel="alternate"][hreflang="en"]');
+      assert(
+        'nav-en-prefixed',
+        enBills != null && enMethod?.textContent === 'About' && enAlt != null,
+        `bills=${enBills != null} method=${enMethod?.textContent} alt=${enAlt != null}`
+      );
+      setLang('et');
+    } catch (error) {
+      assert('nav-en-prefixed', false, error.message);
     }
 
     try {

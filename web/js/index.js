@@ -1,5 +1,5 @@
 import { fetchBillIndex, fetchLatestIngest } from "/js/api.js";
-import { t, applyStatic } from "/js/i18n.js";
+import { t, applyStatic, withLang } from "/js/i18n.js";
 import { renderHeader, renderFooter } from "/js/shell.js";
 
 const PAGE_SIZE = 25;
@@ -295,7 +295,7 @@ function renderFindingCell(row) {
 
 function renderRows(rows) {
   els.tbody.innerHTML = rows.map((row) => {
-    const href = `/bill/${row.bill_id ?? ""}`;
+    const href = withLang(`/bill/${row.bill_id ?? ""}`);
     const changedAt = formatDateTime(row.doc_fetched_at || row.last_seen_at);
     return `
       <tr data-href="${escapeHtml(href)}" data-status="${escapeHtml(row.active_stage || row.status || "unknown")}" tabindex="0">

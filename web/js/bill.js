@@ -7,7 +7,7 @@ import {
   fetchSamplesMeta,
   postFeedback
 } from "api.js";
-import { t as translate } from "i18n.js";
+import { t as translate, withLang, stripLang, getLang } from "i18n.js";
 
 const SEVERITY_RANK = { HIGH: 3, MEDIUM: 2, LOW: 1 };
 const SEVERITIES = new Set(["HIGH", "MEDIUM", "LOW"]);
@@ -238,7 +238,7 @@ function localizedName(item, rawKey) {
   if (!item) {
     return rawKey || "-";
   }
-  const lang = document.documentElement.lang || "et";
+  const lang = getLang();
   if (lang.startsWith("en")) {
     return item.name_en || item.label_en || item.name_et || item.label_et || rawKey || "-";
   }
@@ -311,6 +311,7 @@ function currentHistoryFor(history, analysis) {
 function setFrame() {
   const bill = state.bill || {};
   const apiData = bill.api_data || {};
+  document.documentElement.lang = getLang();
   const titleParts = [bill.bill_number, bill.title].filter(Boolean);
   const pageTitle = titleParts.join(" ") || "Apsakaleidja";
   byId("billTitle").textContent = pageTitle;
@@ -318,6 +319,9 @@ function setFrame() {
 
   const backLink = byId("backLink");
   backLink.textContent = `< ${tr("back")}`;
+  backLink.href = withLang("/");
+
+  setupLangToggle();
 
   const riigikoguLink = byId("riigikoguLink");
   if (apiData.uuid) {
@@ -331,6 +335,22 @@ function setFrame() {
   }
 
   renderMetaGrid();
+}
+
+// Bill pages have their own header (no site shell), so the language toggle is
+// wired here. It navigates to the same bill in the other language.
+function setupLangToggle() {
+  const toggle = byId("langToggle");
+  if (!toggle) {
+    return;
+  }
+  const current = getLang();
+  toggle.textContent = current === "en" ? "ET" : "EN";
+  const other = current === "en" ? "et" : "en";
+  const canonical = stripLang(window.location.pathname);
+  toggle.onclick = () => {
+    window.location.assign(`${withLang(canonical, other)}${window.location.search}${window.location.hash}`);
+  };
 }
 
 function interpretivePassName() {
@@ -1018,7 +1038,7 @@ function renderRawJsonPanel() {
   appendText(note, tr("raw_json_note"));
   note.appendChild(text(" "));
   const link = document.createElement("a");
-  link.href = "/metoodika#andmed";
+  link.href = `${withLang("/metoodika")}#andmed`;
   link.textContent = tr("methodology_data");
   note.appendChild(link);
   details.appendChild(note);

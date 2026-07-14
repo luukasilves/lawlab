@@ -1,4 +1,4 @@
-import { applyStatic, getLang, setLang, t } from './i18n.js';
+import { applyStatic, getLang, stripLang, t, withLang } from './i18n.js';
 
 function isActive(name, active) {
   if (active) {
@@ -35,15 +35,46 @@ function isStale(iso) {
   return !Number.isNaN(date.getTime()) && Date.now() - date.getTime() > 48 * 60 * 60 * 1000;
 }
 
+// The toggle navigates to the same page in the other language rather than
+// reloading, so the language is always reflected in (and driven by) the URL.
+function otherLangHref() {
+  const other = getLang() === 'en' ? 'et' : 'en';
+  const canonical = stripLang(location.pathname);
+  return `${withLang(canonical, other)}${location.search}${location.hash}`;
+}
+
 function wireLangToggle(root) {
   const button = root.querySelector('[data-lang-toggle]');
   if (!button) {
     return;
   }
   button.addEventListener('click', () => {
-    setLang(getLang() === 'en' ? 'et' : 'en');
-    location.reload();
+    location.assign(otherLangHref());
   });
+}
+
+// hreflang alternates + canonical make the ET/EN pages linkable and correctly
+// indexed. Rebuilt on each render; tagged so re-renders don't stack duplicates.
+function injectAlternates() {
+  if (typeof document === 'undefined' || !document.head) {
+    return;
+  }
+  const canonical = stripLang(location.pathname);
+  document.head.querySelectorAll('link[data-lawlab-alt]').forEach((node) => node.remove());
+  const add = (rel, hreflang, href) => {
+    const link = document.createElement('link');
+    link.rel = rel;
+    if (hreflang) {
+      link.hreflang = hreflang;
+    }
+    link.href = href;
+    link.setAttribute('data-lawlab-alt', '');
+    document.head.appendChild(link);
+  };
+  add('canonical', null, withLang(canonical, getLang()));
+  add('alternate', 'et', withLang(canonical, 'et'));
+  add('alternate', 'en', withLang(canonical, 'en'));
+  add('alternate', 'x-default', withLang(canonical, 'et'));
 }
 
 // `active` is either a nav name ('bills'/'method') rendered into #app-header,
@@ -59,18 +90,20 @@ export function renderHeader(active) {
   const billsActive = isActive('bills', activeName);
   const methodActive = isActive('method', activeName);
   const nextLang = getLang() === 'en' ? 'ET' : 'EN';
+  const billsHref = withLang('/');
+  const methodHref = withLang('/metoodika');
 
   mount.innerHTML = `
     <header class="site-header">
       <div class="container header-inner">
-        <a class="brand" href="/" aria-label="Apsakaleidja">
+        <a class="brand" href="${billsHref}" aria-label="Apsakaleidja">
           <span class="wordmark">Apsakaleidja</span>
           <span class="beta-chip" data-i18n="beta"></span>
         </a>
         <p class="tagline" data-i18n="tagline"></p>
         <nav class="site-nav" aria-label="Primary">
-          <a href="/" data-i18n="nav_bills" class="${billsActive ? 'active' : ''}" ${billsActive ? 'aria-current="page"' : ''}></a>
-          <a href="/metoodika" data-i18n="nav_method" class="${methodActive ? 'active' : ''}" ${methodActive ? 'aria-current="page"' : ''}></a>
+          <a href="${billsHref}" data-i18n="nav_bills" class="${billsActive ? 'active' : ''}" ${billsActive ? 'aria-current="page"' : ''}></a>
+          <a href="${methodHref}" data-i18n="nav_method" class="${methodActive ? 'active' : ''}" ${methodActive ? 'aria-current="page"' : ''}></a>
           <button class="lang-toggle" type="button" data-lang-toggle aria-label="Switch language">${nextLang}</button>
         </nav>
       </div>
@@ -78,6 +111,7 @@ export function renderHeader(active) {
   `;
   applyStatic(mount);
   wireLangToggle(mount);
+  injectAlternates();
 }
 
 // `freshnessISO` is either an ISO timestamp rendered into #app-footer, or a
@@ -99,7 +133,7 @@ export function renderFooter(freshnessISO = null) {
         <div class="footer-links">
           <span class="footer-source">${t('footer_source')}: <a href="https://www.riigikogu.ee">Riigikogu</a></span>
           <a href="https://github.com/luukasilves/lawlab">GitHub</a>
-          <a href="/metoodika#andmed" data-i18n="api_docs"></a>
+          <a href="${withLang('/metoodika')}#andmed" data-i18n="api_docs"></a>
         </div>
         <div class="last-updated" data-last-updated>
           ${formatted ? `<span>${t('fresh_updated')}: <time datetime="${iso}">${formatted}</time></span>` : ''}

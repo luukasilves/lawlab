@@ -85,6 +85,26 @@
     border-color: #b9bcb8;
   }
 
+  .topline-right {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+  }
+
+  .lang-toggle {
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    cursor: pointer;
+    font: inherit;
+    min-height: 32px;
+    padding: 5px 10px;
+  }
+
+  .lang-toggle:hover {
+    border-color: #b9bcb8;
+  }
+
   .header-main {
     align-items: end;
     display: grid;
@@ -575,7 +595,10 @@
 <header class="page-header">
   <div class="topline">
     <a class="back-link" id="backLink" href="/"></a>
-    <a class="external-link" id="riigikoguLink" rel="noreferrer" target="_blank" hidden></a>
+    <div class="topline-right">
+      <a class="external-link" id="riigikoguLink" rel="noreferrer" target="_blank" hidden></a>
+      <button class="lang-toggle" type="button" id="langToggle" aria-label="Switch language"></button>
+    </div>
   </div>
   <div class="header-main">
     <h1 id="billTitle">Apsakaleidja</h1>

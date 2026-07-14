@@ -1,2 +1,4 @@
-/bill/*  /bill.html  200
-/metoodika  /metoodika.html  200
+/en/bill/*     /bill       200
+/en/metoodika  /metoodika  200
+/en            /           200
+/bill/*        /bill       200
