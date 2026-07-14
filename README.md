@@ -41,7 +41,7 @@ db/          schema (applied to Supabase; RLS: anon read, service writes)
 web/         static viewer (vanilla ES modules) + methodology exporter
 eval/        gold set + recall/false-alarm harness
 scripts/     seed_reference.py, page_smoke.mjs (CDP live-page harness)
-docs/        EXTENDING.md — how to add checks/passes (the 3-touch recipe)
+docs/        EXTENDING.md (add checks/passes), DEPLOY.md (routing, /en, DNS)
 ```
 
 ## Running
@@ -55,7 +55,10 @@ cp .env.example .env                    # Supabase + OpenRouter keys
 ```
 
 Daily pipeline: `.github/workflows/ingest.yml` (ingest + analyze, capped,
-failure auto-files an issue). Deploy: `npx wrangler deploy`.
+failure auto-files an issue). Deploy: `npx wrangler deploy` (Workers) and
+`npx wrangler pages deploy web --project-name lawlab` (Pages, for the custom
+domain). Routing, the `/en` language scheme, and the DNS cutover — including
+the `run_worker_first` and Pages clean-URL gotchas — are in `docs/DEPLOY.md`.
 
 ## Cost & scale
 
