@@ -23,7 +23,10 @@ jobs:
           python -m analysis.tests.test_engine && \
           python -m analysis.tests.test_run && \
           python -m analysis.tests.test_manifest && \
+          python -m analysis.tests.test_parser_quotes && \
           python -m analysis.tests.test_llm_layer && \
           python -m analysis.tests.test_pipeline && \
           python -m ingestion.tests.test_ingest_logic && \
-          python -m eval.test_metrics
+          python -m ingestion.tests.test_memo_split && \
+          python -m eval.test_metrics && \
+          python -m web.export_methodology --check
