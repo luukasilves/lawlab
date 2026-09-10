@@ -13,6 +13,9 @@ create table if not exists bills (
   title        text,
   api_data     jsonb,
   status       text,                    -- proceedingStatus (+ left_proceedings from sweep)
+  text_status  text,                    -- ok|no_files|unsupported_format|image_only_pdf|empty_text|download_failed|convert_failed
+  text_formats text,                    -- comma-joined sorted Riigikogu file formats, e.g. 'doc,pdf'
+  text_checked_at timestamptz,          -- last time ingestion evaluated text availability
   last_seen_at timestamptz,             -- last time the listing sweep saw this bill
   created_at   timestamptz default now()
 );
@@ -155,6 +158,28 @@ create table if not exists feedback (
   created_at  timestamptz default now()
 );
 
+-- ── deployed schema compatibility + idempotent backfills ────────────────────
+alter table bills add column if not exists text_status text;
+alter table bills add column if not exists text_formats text;
+alter table bills add column if not exists text_checked_at timestamptz;
+
+update bills b
+set
+  text_status = 'ok',
+  text_checked_at = d.fetched_at
+from (
+  select bill_id, max(fetched_at) as fetched_at
+  from bill_documents
+  where document_type = 'eelnõu'
+  group by bill_id
+) d
+where b.id = d.bill_id
+  and b.text_status is null;
+
+update analyses set llm_cache_key = config->>'llm_cache_key'
+where llm_cache_key is null
+  and config ? 'llm_cache_key';
+
 -- ── dashboard views (PostgREST exposes these; the index page reads ONE call) ─
 -- security_invoker: views respect the underlying RLS instead of running as owner.
 -- bill_index never touches parsed_text — index payload stays small.
@@ -180,7 +205,13 @@ select
   coalesce(fc.refuted, 0) as refuted_count,
   -- detailed Riigikogu stage (raw enum, e.g. MENETLUSSE_VOETUD), appended last
   -- so `create or replace view` stays valid against the deployed column order.
-  b.api_data->>'activeDraftStatus' as active_stage
+  b.api_data->>'activeDraftStatus' as active_stage,
+  -- append-only: new bill_index columns must be added after active_stage.
+  b.text_status,
+  b.text_formats,
+  b.text_checked_at,
+  b.api_data->>'activeDraftStatusDate' as active_stage_date,
+  b.api_data->>'initiated' as initiated_date
 from bills b
 left join lateral (
   select id, version, fetched_at, text_length, extraction_method

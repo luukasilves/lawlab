@@ -47,22 +47,6 @@
       letter-spacing: 0;
     }
 
-    .freshness-line {
-      color: var(--index-muted);
-      font-size: 13px;
-    }
-
-    .banner-stale {
-      width: fit-content;
-      max-width: 100%;
-      border: 1px solid #fedf89;
-      background: #fffaeb;
-      color: #93370d;
-      border-radius: 6px;
-      padding: 8px 10px;
-      font-size: 13px;
-    }
-
     .stat-grid {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -288,8 +272,6 @@
   <main id="lawlab-index" class="index-dashboard">
     <header class="index-top">
       <h1>Apsakaleidja</h1>
-      <div id="freshness-line" class="freshness-line"></div>
-      <div id="stale-banner" class="banner-stale" hidden></div>
     </header>
 
     <section id="stat-cards" class="stat-grid"></section>

@@ -1,14 +1,22 @@
-import { fetchBillIndex, fetchLatestIngest } from "/js/api.js";
-import { t, applyStatic, withLang } from "/js/i18n.js";
-import { renderHeader, renderFooter } from "/js/shell.js";
+import { fetchBillIndex } from "./api.js";
+import { t, applyStatic, withLang } from "./i18n.js";
 
 const PAGE_SIZE = 25;
 const SEARCH_DELAY_MS = 150;
-const STALE_AFTER_MS = 48 * 60 * 60 * 1000;
+const NO_TEXT_STATUSES = new Set([
+  "no_files",
+  "unsupported_format",
+  "image_only_pdf",
+  "empty_text",
+  "download_failed",
+  "convert_failed",
+]);
+
+let renderHeader = null;
+let renderFooter = null;
 
 let state = {
   rows: [],
-  ingest: [],
   statFilter: null,
   search: "",
   status: "all",
@@ -63,13 +71,54 @@ function formatDateTime(value) {
   return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+export function activityDate(row) {
+  const value = row?.active_stage_date || row?.initiated_date || "";
+  return String(value).slice(0, 10);
+}
+
+export function formatDay(ymd) {
+  const value = String(ymd ?? "");
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return "";
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const isLeapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const monthDays = [31, isLeapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month < 1 || month > 12 || day < 1 || day > monthDays[month - 1]) return "";
+
+  return `${match[3]}.${match[2]}.${match[1]}`;
+}
+
+export function needsRecheck(row) {
+  if (!hasDocument(row)) return false;
+  const movedAt = activityDate(row);
+  const checkedAt = String(row?.text_checked_at || row?.doc_fetched_at || "").slice(0, 10);
+  return Boolean(movedAt && checkedAt && movedAt > checkedAt);
+}
+
+export function sortedRowsFor(rows) {
+  return (Array.isArray(rows) ? rows.slice() : []).sort((left, right) => {
+    const leftActivity = activityDate(left);
+    const rightActivity = activityDate(right);
+    if (leftActivity !== rightActivity) {
+      if (!leftActivity) return 1;
+      if (!rightActivity) return -1;
+      return rightActivity.localeCompare(leftActivity);
+    }
+
+    const byFetchedAt = parseTime(right.doc_fetched_at) - parseTime(left.doc_fetched_at);
+    if (byFetchedAt !== 0) return byFetchedAt;
+    return String(left.bill_number ?? "").localeCompare(String(right.bill_number ?? ""), "et");
+  });
+}
+
 function collectElements() {
   els = {
     root: byId("lawlab-index"),
     shellHeader: byId("app-shell-header"),
     shellFooter: byId("app-shell-footer"),
-    freshness: byId("freshness-line"),
-    staleBanner: byId("stale-banner"),
     statCards: byId("stat-cards"),
     search: byId("index-search"),
     status: byId("status-filter"),
@@ -168,11 +217,7 @@ function bindEvents() {
 }
 
 function sortedRows() {
-  return state.rows.slice().sort((left, right) => {
-    const byFetchedAt = parseTime(right.doc_fetched_at) - parseTime(left.doc_fetched_at);
-    if (byFetchedAt !== 0) return byFetchedAt;
-    return String(left.bill_number ?? "").localeCompare(String(right.bill_number ?? ""), "et");
-  });
+  return sortedRowsFor(state.rows);
 }
 
 function rowMatchesStat(row) {
@@ -202,6 +247,7 @@ function stats() {
   return {
     total: state.rows.length,
     analyzed: state.rows.filter(hasAnalysis).length,
+    noText: state.rows.filter((row) => !hasDocument(row)).length,
     high: state.rows.filter((row) => asNumber(row.high_count) > 0).length,
     medium: state.rows.filter((row) => asNumber(row.medium_count) > 0).length,
     low: state.rows.filter((row) => asNumber(row.low_count) > 0).length,
@@ -211,8 +257,9 @@ function stats() {
 function renderStats() {
   if (!els.statCards) return;
   const counts = stats();
+  const totalSub = `${counts.analyzed} ${t("stat_analyzed_sub")}${counts.noText > 0 ? ` · ${counts.noText} ${t("stat_no_text_sub")}` : ""}`;
   const cards = [
-    ["total", t("stat_total"), counts.total, `${counts.analyzed} ${t("stat_analyzed_sub")}`],
+    ["total", t("stat_total"), counts.total, totalSub],
     ["high", t("stat_high"), counts.high, t("stat_click_filter")],
     ["medium", t("stat_medium"), counts.medium, t("stat_click_filter")],
     ["low", t("stat_low"), counts.low, t("stat_click_filter")],
@@ -228,31 +275,6 @@ function renderStats() {
       </button>
     `;
   }).join("");
-}
-
-function latestIngestDate() {
-  if (!Array.isArray(state.ingest) || state.ingest.length === 0) return null;
-  return state.ingest.reduce((latest, item) => {
-    const next = parseTime(item?.finished_at);
-    return next > latest ? next : latest;
-  }, 0);
-}
-
-function renderFreshness() {
-  const latest = latestIngestDate();
-  const latestDate = latest ? new Date(latest) : null;
-
-  if (els.freshness) {
-    els.freshness.textContent = latestDate
-      ? `${t("fresh_updated")}: ${formatDateTime(latestDate)}`
-      : `${t("fresh_updated")}:`;
-  }
-
-  if (els.staleBanner) {
-    const stale = !latestDate || Date.now() - latestDate.getTime() > STALE_AFTER_MS;
-    els.staleBanner.textContent = t("fresh_stale");
-    els.staleBanner.hidden = !stale;
-  }
 }
 
 // Detailed Riigikogu stage (raw enum, as the old site showed it) with a
@@ -271,9 +293,16 @@ function renderStatusOptions() {
     .map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`).join("");
 }
 
+function noTextReason(row) {
+  const status = row?.text_status;
+  if (!NO_TEXT_STATUSES.has(status)) return t("no_text");
+  const formats = row?.text_formats ? ` (${row.text_formats})` : "";
+  return `${t(`text_status_${status}`)}${formats}`;
+}
+
 function renderFindingCell(row) {
   if (!hasDocument(row)) {
-    return `<span class="muted no-text">${escapeHtml(t("no_text"))}</span>`;
+    return `<span class="muted no-text" title="${escapeHtml(noTextReason(row))}">${escapeHtml(t("state_no_text"))}</span>`;
   }
 
   if (!hasAnalysis(row)) {
@@ -296,13 +325,17 @@ function renderFindingCell(row) {
 function renderRows(rows) {
   els.tbody.innerHTML = rows.map((row) => {
     const href = withLang(`/bill/${row.bill_id ?? ""}`);
-    const changedAt = formatDateTime(row.doc_fetched_at || row.last_seen_at);
+    const movedAt = activityDate(row);
+    const changedAt = movedAt ? formatDay(movedAt) : formatDateTime(row.doc_fetched_at || row.last_seen_at);
+    const recheck = needsRecheck(row)
+      ? `<span class="muted" title="${escapeHtml(t("recheck_note"))}"> · ${escapeHtml(t("state_recheck"))}</span>`
+      : "";
     return `
       <tr data-href="${escapeHtml(href)}" data-status="${escapeHtml(row.active_stage || row.status || "unknown")}" tabindex="0">
         <td><a href="${escapeHtml(href)}">${escapeHtml(row.bill_number || row.bill_id || "")}</a></td>
         <td>${escapeHtml(row.title || "")}</td>
         <td>${escapeHtml(statusText(row))}</td>
-        <td>${escapeHtml(changedAt)}</td>
+        <td>${escapeHtml(changedAt)}${recheck}</td>
         <td>${renderFindingCell(row)}</td>
       </tr>
     `;
@@ -348,10 +381,9 @@ function renderTable() {
   renderPagination(totalPages);
 }
 
-function init(rows = [], ingest = []) {
+function init(rows = []) {
   state = {
     rows: Array.isArray(rows) ? rows.slice() : [],
-    ingest: Array.isArray(ingest) ? ingest.slice() : [],
     statFilter: null,
     search: "",
     status: "all",
@@ -369,19 +401,23 @@ function init(rows = [], ingest = []) {
   if (els.status) els.status.value = "all";
 
   bindEvents();
-  renderFreshness();
   renderStats();
   renderTable();
 }
 
 async function autoInit() {
-  const [rows, ingest] = await Promise.all([fetchBillIndex(), fetchLatestIngest()]);
-  init(rows, ingest);
+  ({ renderHeader, renderFooter } = await import("./shell.js"));
+  const rows = await fetchBillIndex();
+  init(rows);
 }
 
-window.LawlabIndex = { init };
+const isBrowser = typeof window !== "undefined" && typeof document !== "undefined";
 
-if (!window.__LAWLAB_TEST__) {
+if (isBrowser) {
+  window.LawlabIndex = { init };
+}
+
+if (isBrowser && !window.__LAWLAB_TEST__) {
   let autoStarted = false;
   const startAutoInit = () => {
     if (autoStarted) return;

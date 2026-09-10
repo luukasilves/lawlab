@@ -8,9 +8,11 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
+import sys
 from typing import Any, Callable, Dict, Optional
 
 import config
+from .run_ingest import run_ok
 from .store import SupabaseStore
 
 
@@ -48,7 +50,7 @@ def run_pending(store, analyze_fn: Optional[Callable[..., Any]] = None,
                 max_bills: Optional[int] = None, use_llm: bool = True) -> Dict[str, Any]:
     started_at = _now_iso()
     stats = {"analysed": 0, "skipped": 0, "failed": 0,
-             "reused": 0, "cost_usd": 0.0}
+             "reused": 0, "cost_usd": 0.0, "candidates": 0, "pending": 0}
     n, k, temp = config.SC_SAMPLES, config.SC_MIN_AGREEMENT, config.SC_TEMPERATURE
     cap = MAX_BILLS_DEFAULT if max_bills is None else max_bills
     attempted = 0
@@ -58,6 +60,9 @@ def run_pending(store, analyze_fn: Optional[Callable[..., Any]] = None,
             if analyze_fn is None:
                 from analysis.run import analyze as analyze_fn
             docs = store.docs_needing_analysis()
+            stats["candidates"] = len(docs)
+            if not docs and store.count_bills() > 0:
+                stats["error"] = "no candidate documents while bills exist"
             for doc in docs:
                 try:
                     text_sha = doc["content_hash"]
@@ -68,7 +73,8 @@ def run_pending(store, analyze_fn: Optional[Callable[..., Any]] = None,
                         continue
 
                     if cap is not None and attempted >= cap:
-                        break
+                        stats["pending"] += 1
+                        continue
                     attempted += 1
 
                     samples = store.find_reusable_samples(llm_key)
@@ -100,9 +106,10 @@ def run_pending(store, analyze_fn: Optional[Callable[..., Any]] = None,
         except Exception as exc:
             print(f"  analysis listing failed ({type(exc).__name__}: {exc})")
             stats["failed"] += 1
+            stats["error"] = f"listing: {type(exc).__name__}: {str(exc)[:170]}"
     finally:
         try:
-            store.record_run("analyze", started_at, stats["failed"] == 0, stats)
+            store.record_run("analyze", started_at, run_ok(stats), stats)
         except Exception as exc:  # bookkeeping is best-effort: a flaky network
             print(f"  record_run failed ({type(exc).__name__}) — analyses already persisted")
 
@@ -119,6 +126,8 @@ def main():
     store = SupabaseStore()
     stats = run_pending(store, max_bills=a.max_bills_per_run, use_llm=not a.no_llm)
     print(stats)
+    if not run_ok(stats):
+        sys.exit(1)
 
 
 if __name__ == "__main__":

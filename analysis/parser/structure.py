@@ -212,7 +212,7 @@ def _quote_mask(s: str) -> List[bool]:
             inside = True
             opener = ch
             mask[i] = True
-        elif ch in ("“", "”") and inside and opener == "„":
+        elif ch in ("“", "”") and inside and opener in ("„", "”"):
             inside = False
             opener = ""
             mask[i] = True

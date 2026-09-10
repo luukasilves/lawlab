@@ -93,8 +93,8 @@ export function fetchBillIndex() {
   return api('/rest/v1/bill_index?select=*&order=doc_fetched_at.desc.nullslast');
 }
 
-export function fetchLatestIngest() {
-  return api('/rest/v1/pipeline_runs?kind=eq.ingest&ok=eq.true&select=finished_at,stats&order=finished_at.desc&limit=1');
+export function fetchPipelineRuns() {
+  return api('/rest/v1/pipeline_runs?select=kind,started_at,finished_at,ok,stats&order=started_at.desc&limit=20');
 }
 
 // PostgREST always returns arrays; singular fetchers unwrap the first row.

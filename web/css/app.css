@@ -525,6 +525,8 @@ mark.low {
 }
 
 .last-updated {
+  display: grid;
+  gap: 4px;
   color: var(--muted);
   font-size: 0.92rem;
 }
