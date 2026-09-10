@@ -7,6 +7,8 @@
 <script type="importmap">
 {
   "imports": {
+    "/js/api.js": "./stubs-bill/api.js",
+    "/js/i18n.js": "./stubs-bill/i18n.js",
     "api.js": "./stubs-bill/api.js",
     "i18n.js": "./stubs-bill/i18n.js"
   }
@@ -45,6 +47,7 @@
       <h2 id="resultsTitle"></h2>
       <span id="resultsCount"></span>
     </div>
+    <div id="billState" hidden></div>
     <div id="analysisSummary"></div>
     <div id="findingsList"></div>
     <div id="refutedSection"></div>
@@ -199,10 +202,13 @@ const fixture = {
     api_data: {
       uuid: "11111111-2222-3333-4444-555555555555",
       draftTypeCode: "SE",
-      leadingCommittee: { name: "Õiguskomisjon" }
+      leadingCommittee: { name: "Õiguskomisjon" },
+      activeDraftStatusDate: "2026-07-01T12:00:00Z"
     },
+    text_checked_at: "2026-07-01T10:00:00Z",
+    last_seen_at: "2026-07-01T12:00:00Z",
     bill_documents: [
-      { id: "doc-v1", doc_version: "v1", fetched_at: "2026-07-01T10:00:00Z" }
+      { id: "doc-v1", document_type: "eelnõu", doc_version: "v1", fetched_at: "2026-07-01T10:00:00Z", text_length: parsedText.length, extraction_method: "html" }
     ]
   },
   history: [
@@ -261,9 +267,59 @@ function tick() {
   return new Promise((resolve) => window.setTimeout(resolve, 0));
 }
 
+function clone(value) {
+  return structuredClone(value);
+}
+
+function stateFixture(overrides = {}) {
+  const next = clone(fixture);
+  next.bill = {
+    ...next.bill,
+    id: overrides.id || next.bill.id,
+    title: overrides.title || next.bill.title,
+    text_status: overrides.text_status ?? next.bill.text_status,
+    text_formats: overrides.text_formats ?? next.bill.text_formats,
+    text_checked_at: overrides.text_checked_at ?? next.bill.text_checked_at,
+    last_seen_at: overrides.last_seen_at ?? next.bill.last_seen_at,
+    api_data: {
+      ...next.bill.api_data,
+      ...(overrides.api_data || {})
+    },
+    bill_documents: overrides.bill_documents ?? next.bill.bill_documents
+  };
+  next.analysis = overrides.analysis === undefined ? next.analysis : overrides.analysis;
+  next.history = overrides.history === undefined ? next.history : overrides.history;
+  next.parsedText = overrides.parsedText === undefined ? next.parsedText : overrides.parsedText;
+  next.samplesMeta = overrides.samplesMeta === undefined ? next.samplesMeta : overrides.samplesMeta;
+  next.analysesById = overrides.analysesById === undefined ? next.analysesById : overrides.analysesById;
+  next.samplesByAnalysis = overrides.samplesByAnalysis === undefined ? next.samplesByAnalysis : overrides.samplesByAnalysis;
+  return next;
+}
+
+function metaValue(label) {
+  return Array.from(document.querySelectorAll("#metaGrid .meta-card"))
+    .find((card) => card.querySelector(".meta-label")?.textContent === label)
+    ?.querySelector(".meta-value")?.textContent || "";
+}
+
+function visibleBillText() {
+  return [
+    document.getElementById("docText")?.textContent || "",
+    document.getElementById("analysisSummary")?.textContent || "",
+    document.getElementById("findingsList")?.textContent || "",
+    document.getElementById("refutedSection")?.textContent || "",
+    document.getElementById("pipelinePanel")?.textContent || "",
+    document.getElementById("historyPanel")?.textContent || "",
+    document.getElementById("rawJsonPanel")?.textContent || ""
+  ].join("\n");
+}
+
 try {
   await import("../js/bill.js");
   await window.LawlabBill.init(fixture);
+  const { latestDocument, billStateFor } = window.LawlabBill;
+  assert(latestDocument(fixture.bill)?.id === "doc-v1", "assert-latest-document: expected eelnõu document");
+  assert(billStateFor(fixture.bill, analysis.id) === "analysed", "assert-bill-state-analysed: expected analysed");
 
   const overlapAnchors = {
     A: document.getElementById("mark-A"),
@@ -319,9 +375,94 @@ try {
   const historySummary = document.querySelector("#historyPanel summary");
   assert(historySummary?.textContent === "Analüüside ajalugu (2)", `assert-history-count: got ${historySummary?.textContent}`);
 
+  const noTextReason = "Eelnõu on avaldatud ainult vormingus, mida ei õnnestu lugeda (doc,pdf)";
+  const noTextFixture = stateFixture({
+    id: "bill-no-text",
+    title: "Loetamatu vorminguga eelnõu",
+    text_status: "unsupported_format",
+    text_formats: "doc,pdf",
+    text_checked_at: "2026-07-04T10:00:00Z",
+    last_seen_at: "2026-07-04T10:00:00Z",
+    bill_documents: [],
+    analysis: null,
+    history: [],
+    parsedText: { parsed_text: "" },
+    samplesMeta: [],
+    analysesById: {},
+    samplesByAnalysis: {}
+  });
+  await window.LawlabBill.init(noTextFixture);
+  assert(billStateFor(noTextFixture.bill, "") === "no_text", "assert-no-text-state-helper: expected no_text");
+  assert(document.querySelector("#docText .state-panel")?.textContent.includes(noTextReason), "assert-no-text-doc-panel: missing reason");
+  assert(document.querySelector("#findingsList .state-panel")?.textContent.includes(noTextReason), "assert-no-text-findings-panel: missing reason");
+  assert(!visibleBillText().includes("Avaldatavaid leide ei tuvastatud."), "assert-no-text-no-zero-copy: zero findings copy visible");
+  assert(document.getElementById("analysisSummary").textContent === "", "assert-no-text-summary-empty: summary not empty");
+  assert(document.getElementById("resultsCount").textContent === "", "assert-no-text-count-empty: count not empty");
+  assert(document.getElementById("pipelinePanel").textContent === "", "assert-no-text-pipeline-empty: pipeline not empty");
+  assert(metaValue("Viimati uuendatud") && metaValue("Viimati uuendatud") !== "-", `assert-no-text-updated: got ${metaValue("Viimati uuendatud")}`);
+
+  const memoOnlyFixture = stateFixture({
+    id: "bill-memo-only",
+    title: "Ainult seletuskirjaga eelnõu",
+    text_status: "unsupported_format",
+    text_formats: "doc,pdf",
+    text_checked_at: "2026-07-05T10:00:00Z",
+    last_seen_at: "2026-07-05T10:00:00Z",
+    bill_documents: [
+      { id: "memo-1", document_type: "seletuskiri", doc_version: "memo-v1", fetched_at: "2026-07-05T10:00:00Z", text_length: 500 }
+    ],
+    analysis: null,
+    history: [],
+    parsedText: { parsed_text: "Memo tekst ei tohi dokumendina renderduda." },
+    samplesMeta: [],
+    analysesById: {},
+    samplesByAnalysis: {}
+  });
+  await window.LawlabBill.init(memoOnlyFixture);
+  assert(latestDocument(memoOnlyFixture.bill) == null, "assert-memo-ignored-helper: memo should not be latest document");
+  assert(billStateFor(memoOnlyFixture.bill, "") === "no_text", "assert-memo-no-text-state: expected no_text");
+  assert(document.querySelector("#docText .state-panel")?.textContent.includes(noTextReason), "assert-memo-doc-panel: missing no-text reason");
+  assert(document.querySelector("#findingsList .state-panel")?.textContent.includes(noTextReason), "assert-memo-findings-panel: missing no-text reason");
+  assert(!document.getElementById("docText").textContent.includes("Memo tekst"), "assert-memo-not-rendered: memo text rendered");
+
+  const pendingText = "Analüüsimata dokumendi tekst on kasutajale nähtav.";
+  const pendingFixture = stateFixture({
+    id: "bill-pending-analysis",
+    title: "Analüüsi ootav eelnõu",
+    bill_documents: [
+      { id: "doc-pending", document_type: "eelnõu", doc_version: "v1", fetched_at: "2026-07-06T10:00:00Z", text_length: pendingText.length }
+    ],
+    analysis: null,
+    history: [],
+    parsedText: { parsed_text: pendingText },
+    samplesMeta: [],
+    analysesById: {},
+    samplesByAnalysis: {}
+  });
+  await window.LawlabBill.init(pendingFixture);
+  assert(billStateFor(pendingFixture.bill, "") === "pending_analysis", "assert-pending-state-helper: expected pending_analysis");
+  assert(document.getElementById("docText").textContent.includes(pendingText), "assert-pending-doc-text: document text missing");
+  assert(document.querySelector("#findingsList .state-panel")?.textContent.includes("Veel analüüsimata"), "assert-pending-panel-label: missing label");
+  assert(document.querySelector("#findingsList .state-panel")?.textContent.includes("Analüüs käivitub järgmise automaatse kontrolliga."), "assert-pending-panel-note: missing note");
+  assert(document.getElementById("analysisSummary").textContent === "", "assert-pending-summary-empty: summary not empty");
+  assert(document.getElementById("resultsCount").textContent === "", "assert-pending-count-empty: count not empty");
+
+  const recheckFixture = stateFixture({
+    id: "bill-recheck",
+    title: "Liikunud analüüsitud eelnõu",
+    text_checked_at: "2026-07-01T10:00:00Z",
+    api_data: { activeDraftStatusDate: "2026-07-08T12:00:00Z" }
+  });
+  await window.LawlabBill.init(recheckFixture);
+  assert(billStateFor(recheckFixture.bill, analysis.id) === "recheck_pending", "assert-recheck-state-helper: expected recheck_pending");
+  assert(!document.getElementById("billState").hidden, "assert-recheck-note-visible: note hidden");
+  assert(document.getElementById("billState").textContent.includes("uuesti kontrollimine on ootel"), "assert-recheck-note-text: missing note");
+  assert(document.getElementById("resultsCount").textContent === "3", `assert-recheck-results-normal: got ${document.getElementById("resultsCount").textContent}`);
+  assert(document.getElementById("finding-A"), "assert-recheck-findings-normal: findings missing");
+
   const result = document.getElementById("test-result");
   result.className = "pass";
-  result.textContent = "ALL-PASS bill detail";
+  result.textContent = "ALL-PASS";
 } catch (error) {
   console.error(error);
   const result = document.getElementById("test-result");

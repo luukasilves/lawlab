@@ -27,8 +27,6 @@
   <main id="lawlab-index" class="index-dashboard">
     <header class="index-top">
       <h1>Apsakaleidja</h1>
-      <div id="freshness-line" class="freshness-line"></div>
-      <div id="stale-banner" class="banner-stale" hidden></div>
     </header>
 
     <section id="stat-cards" class="stat-grid"></section>
@@ -63,7 +61,7 @@
 
   <script type="module">
     import { STRINGS } from "/js/i18n.js";
-    import "../js/index.js";
+    import { activityDate, formatDay, needsRecheck, sortedRowsFor } from "../js/index.js";
 
     const hour = 60 * 60 * 1000;
     const baseTime = Date.parse("2026-07-10T12:00:00.000Z");
@@ -79,10 +77,15 @@
         title: `Tavaline eelnõu ${index}`,
         status: index % 5 === 0 ? null : (index % 2 === 0 ? "PROCESSED" : "IN_PROCESS"),
         active_stage: index % 5 === 0 ? null : (index % 2 === 0 ? "MENETLUSSE_VOETUD" : "I_LUGEMINE_LOPETATUD"),
+        active_stage_date: `2026-06-${String(Math.max(1, 30 - index)).padStart(2, "0")}`,
+        initiated_date: `2026-05-${String(Math.max(1, 30 - index)).padStart(2, "0")}`,
         last_seen_at: iso(index + 1),
         document_id: `doc-${index}`,
         doc_version: 1,
         doc_fetched_at: iso(index),
+        text_status: "ok",
+        text_formats: "html",
+        text_checked_at: `2026-06-${String(Math.max(1, 30 - index)).padStart(2, "0")}`,
         text_length: 2000 + index,
         extraction_method: "html",
         analysis_id: `analysis-${index}`,
@@ -125,13 +128,20 @@
     });
     Object.assign(FIXTURE_ROWS[11], {
       title: "Tekstita menetlus esimene",
+      active_stage_date: "2026-07-30",
       document_id: null,
+      text_status: "unsupported_format",
+      text_formats: "doc,pdf",
+      text_checked_at: "2026-07-30",
       analysis_id: null,
       analyzed_at: null,
     });
     Object.assign(FIXTURE_ROWS[15], {
       title: "Tekstita menetlus teine",
       document_id: null,
+      text_status: "image_only_pdf",
+      text_formats: "pdf",
+      text_checked_at: "2026-06-15",
       analysis_id: null,
       analyzed_at: null,
     });
@@ -148,16 +158,20 @@
       title: "Koondstaatusega eelnõu kolmas",
       active_stage: null,
     });
-
-    const FIXTURE_INGEST = [{
-      finished_at: new Date(Date.now() - 50 * hour).toISOString(),
-      stats: { rows: FIXTURE_ROWS.length },
-    }];
+    Object.assign(FIXTURE_ROWS[4], {
+      title: "Liikunud tekstiga eelnõu viies",
+      active_stage_date: "2026-07-20",
+      text_checked_at: "2026-07-10",
+    });
+    Object.assign(FIXTURE_ROWS[8], {
+      title: "Ajakohase tekstiga eelnõu üheksas",
+      active_stage_date: "2026-07-12",
+      text_checked_at: "2026-07-12",
+    });
 
     window.__LAWLAB_INDEX_FIXTURE__ = FIXTURE_ROWS;
-    window.__LAWLAB_INGEST_FIXTURE__ = FIXTURE_INGEST;
 
-    window.LawlabIndex.init(FIXTURE_ROWS, FIXTURE_INGEST);
+    window.LawlabIndex.init(FIXTURE_ROWS);
 
     const assertions = [];
     const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -197,8 +211,9 @@
       appendAssert("stat-card-labels", JSON.stringify(labels) === JSON.stringify(expectedLabels), labels.join("|"));
 
       const analyzed = FIXTURE_ROWS.filter((row) => row.analysis_id != null).length;
+      const noText = FIXTURE_ROWS.filter((row) => row.document_id == null).length;
       const subs = names.map((name) => card(name)?.querySelector(".stat-sub")?.textContent);
-      const subsOk = subs[0] === `${analyzed} ${STRINGS.stat_analyzed_sub}`
+      const subsOk = subs[0] === `${analyzed} ${STRINGS.stat_analyzed_sub} · ${noText} ${STRINGS.stat_no_text_sub}`
         && subs.slice(1).every((sub) => sub === STRINGS.stat_click_filter);
       appendAssert("stat-card-subtexts", subsOk, subs.join("|"));
 
@@ -275,18 +290,58 @@
       );
     }
 
-    function runStaleBanner() {
-      const banner = document.querySelector(".banner-stale");
-      appendAssert("stale-banner", !!banner && !banner.hidden && banner.textContent.includes(STRINGS.fresh_stale), banner?.textContent || "");
-    }
-
     async function runNoTextState() {
       await resetFilters();
       search.value = "Tekstita menetlus esimene";
       search.dispatchEvent(new Event("input", { bubbles: true }));
       await wait(SEARCH_DELAY_MS + 30);
       const noText = document.querySelector(".no-text");
-      appendAssert("no-text-state", noText?.textContent === STRINGS.no_text, noText?.textContent || "");
+      const expectedTitle = `${STRINGS.text_status_unsupported_format} (doc,pdf)`;
+      appendAssert(
+        "no-text-state",
+        noText?.textContent === STRINGS.state_no_text && noText?.title === expectedTitle,
+        `${noText?.textContent || ""} title=${noText?.title || ""}`
+      );
+    }
+
+    async function runActivityOrdering() {
+      await resetFilters();
+      const first = visibleRows()[0];
+      appendAssert(
+        "activity-sort-first",
+        first?.textContent.includes("Tekstita menetlus esimene") && first?.children[3]?.textContent.trim() === "30.07.2026",
+        first?.textContent || ""
+      );
+      appendAssert(
+        "activity-helpers",
+        activityDate(FIXTURE_ROWS[11]) === "2026-07-30"
+          && formatDay("2026-07-30") === "30.07.2026"
+          && sortedRowsFor(FIXTURE_ROWS)[0].bill_id === FIXTURE_ROWS[11].bill_id,
+        `${activityDate(FIXTURE_ROWS[11])} ${formatDay("2026-07-30")}`
+      );
+    }
+
+    async function runRecheckMarker() {
+      await resetFilters();
+      search.value = "Liikunud tekstiga eelnõu";
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+      await wait(SEARCH_DELAY_MS + 30);
+      const moved = visibleRows()[0];
+      appendAssert(
+        "recheck-marker-present",
+        needsRecheck(FIXTURE_ROWS[4]) && moved?.children[3]?.textContent.includes(STRINGS.state_recheck),
+        moved?.children[3]?.textContent || ""
+      );
+
+      search.value = "Ajakohase tekstiga eelnõu";
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+      await wait(SEARCH_DELAY_MS + 30);
+      const current = visibleRows()[0];
+      appendAssert(
+        "recheck-marker-absent",
+        !needsRecheck(FIXTURE_ROWS[8]) && !current?.children[3]?.textContent.includes(STRINGS.state_recheck),
+        current?.children[3]?.textContent || ""
+      );
     }
 
     async function runPagination() {
@@ -304,8 +359,9 @@
     await runSearchFilter();
     await runStatusFilter();
     await runStageFallback();
-    runStaleBanner();
+    await runActivityOrdering();
     await runNoTextState();
+    await runRecheckMarker();
     await runPagination();
 
     document.getElementById("test-result").textContent = assertions.every(Boolean) ? "ALL-PASS" : "FAIL";
