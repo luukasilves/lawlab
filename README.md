@@ -49,7 +49,7 @@ docs/        EXTENDING.md (add checks/passes), DEPLOY.md (routing, /en, DNS)
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cp .env.example .env                    # Supabase + OpenRouter keys
-.venv/bin/python -m analysis.tests.test_checkers        # offline suite (CI runs 11 modules)
+.venv/bin/python -m analysis.tests.test_checkers        # offline suite (CI runs 13 modules; 12 without parser quotes)
 .venv/bin/python -m analysis.run analysis/tests/fixtures/bill_728.txt   # one bill, live LLM
 .venv/bin/python -m ingestion.run_ingest --dry-run --max-pages 2        # no keys needed
 ```
@@ -62,10 +62,17 @@ the `run_worker_first` and Pages clean-URL gotchas — are in `docs/DEPLOY.md`.
 
 ## Cost & scale
 
-Corpus: all SE bills with proceedings activity since 2026-01-01 (~212 at
+Corpus: all SE bills with proceedings activity since 2026-01-01 (~213 at
 launch). Steady state ≈ $5–10/month of LLM spend; adding a new deterministic
 check re-analyzes the whole corpus for ~$0 thanks to sample reuse
 (`docs/EXTENDING.md` → cache economics).
+
+## Status
+
+The current corpus is 213 bills. Every publication format is readable except
+image-only scanned PDFs, which are flagged per bill via `text_status`. A data
+failure now turns the pipeline red and files a GitHub issue instead of silently
+reporting success.
 
 ## License
 

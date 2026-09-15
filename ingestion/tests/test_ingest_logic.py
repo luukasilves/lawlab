@@ -28,6 +28,7 @@ Run: python3 -m ingestion.tests.test_ingest_logic
 from __future__ import annotations
 
 import json
+import sys
 import time
 
 import requests as _requests
@@ -78,6 +79,39 @@ def test_fetch_retries_timeouts_and_5xx():
     print("✓ fetch_with_retry survives timeouts and 5xx (not just 429)")
 
 
+def test_fetch_exhaustion_and_404():
+    orig_get, orig_sleep = riigikogu.requests.get, time.sleep
+    time.sleep = lambda *_: None
+    try:
+        log = []
+        riigikogu.requests.get = _seq([FakeResp(503)], log)
+        try:
+            riigikogu.fetch_with_retry("http://x/503", max_retries=3)
+            raise AssertionError("503 exhaustion must raise")
+        except riigikogu.RiigikoguUnavailable as exc:
+            assert exc.status == 503 and exc.reason == "HTTP 503"
+            assert len(log) == 3
+
+        log2 = []
+        riigikogu.requests.get = _seq([_requests.Timeout("t")], log2)
+        try:
+            riigikogu.fetch_with_retry("http://x/timeout", max_retries=2)
+            raise AssertionError("timeout exhaustion must raise")
+        except riigikogu.RiigikoguUnavailable as exc:
+            assert exc.status is None and exc.reason == "timeout"
+            assert len(log2) == 2
+
+        riigikogu.requests.get = _seq([FakeResp(404)], [])
+        try:
+            riigikogu.fetch_with_retry("http://x/404")
+            raise AssertionError("404 must keep raising HTTPError")
+        except _requests.HTTPError:
+            pass
+    finally:
+        riigikogu.requests.get, time.sleep = orig_get, orig_sleep
+    print("✓ fetch_with_retry raises typed failures after retries; 404 remains HTTPError")
+
+
 def _draft(mark, status="IN_PROCESS", date="2026-05-01", code="SE"):
     return {"uuid": f"u{mark}", "mark": mark, "title": f"t{mark}",
             "draftTypeCode": code, "proceedingStatus": status,
@@ -120,6 +154,30 @@ def test_iterate_corpus_window_and_stop():
     print("✓ iterate_corpus: activity-window ∪ IN_PROCESS, SE-only, early stop")
 
 
+def test_iterate_empty_page_vs_5xx():
+    orig_get, orig_sleep = riigikogu.requests.get, time.sleep
+    time.sleep = lambda *_: None
+    try:
+        page0 = {"_embedded": {"content": [_draft(1, "IN_PROCESS", "2026-06-01")]}}
+        riigikogu.requests.get = _seq([FakeResp(200, page0),
+                                       FakeResp(200, {"_embedded": {"content": []}})], [])
+        got = [d["mark"] for d in riigikogu.iterate_corpus("2026-01-01", max_pages=2)]
+        assert got == [1], f"genuine empty page should stop cleanly: {got}"
+
+        log = []
+        riigikogu.requests.get = _seq([FakeResp(200, page0), FakeResp(503)], log)
+        it = riigikogu.iterate_corpus("2026-01-01", max_pages=2)
+        assert next(it)["mark"] == 1
+        try:
+            next(it)
+            raise AssertionError("5xx page must propagate RiigikoguUnavailable")
+        except riigikogu.RiigikoguUnavailable as exc:
+            assert exc.status == 503 and exc.reason == "HTTP 503"
+    finally:
+        riigikogu.requests.get, time.sleep = orig_get, orig_sleep
+    print("✓ iterate_corpus separates empty pages from unavailable listing pages")
+
+
 def _mkstore():
     saved = (config.SUPABASE_URL, config.SUPABASE_ANON_KEY, config.SUPABASE_SERVICE_KEY)
     config.SUPABASE_URL, config.SUPABASE_ANON_KEY, config.SUPABASE_SERVICE_KEY = \
@@ -157,6 +215,7 @@ def test_next_version_and_doc_listing():
     try:
         assert s.next_version("b1") == 3
         assert "order=version.desc" in log[0][0] and "fetched_at.desc" in log[0][0]
+        assert "document_type=eq.eeln%C3%B5u" in log[0][0]
     finally:
         store_mod.requests.get = orig_get
 
@@ -170,10 +229,30 @@ def test_next_version_and_doc_listing():
         url0 = log2[0][0]
         assert "parsed_text" not in url0 and "content_hash" in url0, \
             f"listing must never pull parsed_text: {url0}"
+        assert "order=fetched_at.desc,id.asc" in url0, f"deterministic order missing: {url0}"
         assert log2[0][1].get("headers", {}).get("Range") is not None, "Range pagination expected"
     finally:
         store_mod.requests.get = orig_get
     print("✓ next_version max+1 w/ tiebreaker; doc listing paginates without parsed_text")
+
+
+def test_bill_state_and_count_bills_urls():
+    s = _mkstore()
+    orig_get = store_mod.requests.get
+    log = []
+    store_mod.requests.get = _seq([
+        FakeResp(206, [{"id": "b1"}], {"Content-Range": "0-0/212"}),
+        FakeResp(200, [{"id": "b1", "stage": "2026-01-01", "bill_documents": []}]),
+    ], log)
+    try:
+        assert s.count_bills() == 212
+        assert log[0][1]["headers"]["Prefer"] == "count=exact"
+        assert log[0][1]["headers"]["Range"] == "0-0"
+        s.bill_state("9")
+        assert "bill_documents.document_type=eq.eeln%C3%B5u" in log[1][0]
+    finally:
+        store_mod.requests.get = orig_get
+    print("✓ count_bills parses Content-Range; bill_state counts only eelnõu docs")
 
 
 def test_insert_analysis_and_new_writers():
@@ -193,6 +272,7 @@ def test_insert_analysis_and_new_writers():
         for col in ("llm_cache_key", "provider", "engine", "stats", "duration_ms",
                     "input_tokens", "output_tokens", "cost_usd"):
             assert col in body, f"insert_analysis must write {col}"
+        assert body["llm_cache_key"] == "lk"
         s.insert_samples("a1", [{"pass_id": "interpretive", "sample_idx": 0}])
         assert "/analysis_samples" in log[1][0] and log[1][1]["json"][0]["analysis_id"] == "a1"
         s.record_run("ingest", "2026-07-12T00:00:00Z", True, {"new": 1})
@@ -202,13 +282,34 @@ def test_insert_analysis_and_new_writers():
     print("✓ transparency columns written; insert_samples/record_run wired")
 
 
+def test_insert_analysis_reads_llm_cache_key_from_config():
+    s = _mkstore()
+    orig_post = store_mod.requests.post
+    log = []
+    store_mod.requests.post = _seq([FakeResp(201, [{"id": "a2"}])], log)
+    try:
+        s.insert_analysis("d1", {
+            "cache_key": "ck", "model": "m", "provider": "p",
+            "config": {"llm_cache_key": "lk-from-config"}, "stats": {},
+        })
+        assert log[0][1]["json"]["llm_cache_key"] == "lk-from-config"
+    finally:
+        store_mod.requests.post = orig_post
+    print("✓ insert_analysis reads llm_cache_key from result.config fallback")
+
+
 class FakeStore:
-    def __init__(self, docs):
+    def __init__(self, docs, bill_count=0):
         self._docs = docs
+        self.bill_count = bill_count
         self.analyses = []
         self.samples = []
         self.runs = []
         self.text_fetches = 0
+        self.text_status = {}
+
+    def count_bills(self):
+        return self.bill_count
 
     def docs_needing_analysis(self):
         return self._docs
@@ -236,6 +337,9 @@ class FakeStore:
 
     def record_run(self, kind, started_at, ok, stats):
         self.runs.append((kind, ok, stats))
+
+    def set_text_status(self, bill_id, status, formats):
+        self.text_status[bill_id] = (status, formats)
 
 
 def test_run_pending_cap_and_isolation():
@@ -314,8 +418,10 @@ def test_ingest_corpus_isolation_and_run_record():
     orig_iter, orig_extract, orig_sleep = riigikogu.iterate_corpus, riigikogu.extract_bill_text, time.sleep
     time.sleep = lambda *_: None
     riigikogu.iterate_corpus = lambda cutoff, **kw: iter([_draft(1), _draft(2)])
-    riigikogu.extract_bill_text = lambda uuid: ((None, None) if uuid == "u1"
-                                                else ("Testseadus\n\n§ 1. Reegel\nSisu.\n", "docx"))
+    riigikogu.extract_bill_text = lambda uuid: (
+        riigikogu.Extraction(None, None, "no_files", "") if uuid == "u1"
+        else riigikogu.Extraction(
+            "Testseadus\n\n§ 1. Reegel\nSisu.\n" * 20, "docx", "ok", "docx"))
 
     class S(FakeStore):
         def __init__(self):
@@ -348,15 +454,337 @@ def test_ingest_corpus_isolation_and_run_record():
     print("✓ ingest_corpus: no-text isolated + counted, pipeline run recorded")
 
 
+def test_ingest_listing_failure_records_not_ok():
+    orig_iter = riigikogu.iterate_corpus
+
+    def fail_listing(cutoff, **kw):
+        raise riigikogu.RiigikoguUnavailable("http://x", 503, "HTTP 503")
+
+    riigikogu.iterate_corpus = fail_listing
+    fs = FakeStore([], bill_count=10)
+    try:
+        stats = run_ingest.ingest_corpus(fs, cutoff="2026-01-01")
+        assert stats["failed"] == 1 and stats["error"].startswith("listing:"), stats
+        assert fs.runs[-1][1] is False
+    finally:
+        riigikogu.iterate_corpus = orig_iter
+    print("✓ listing failures record ok=False with a listing-prefixed error")
+
+
+def test_ingest_seen_floor_and_disable():
+    orig_iter, orig_extract, orig_sleep = riigikogu.iterate_corpus, riigikogu.extract_bill_text, time.sleep
+    time.sleep = lambda *_: None
+    riigikogu.iterate_corpus = lambda cutoff, **kw: iter([_draft(1), _draft(2), _draft(3)])
+    riigikogu.extract_bill_text = lambda uuid: riigikogu.Extraction(None, None, "no_files", "")
+
+    class S(FakeStore):
+        def upsert_bill(self, mark, title, api_data):
+            return f"b{mark}"
+
+        def bill_state(self, mark):
+            return None
+
+    try:
+        fs = S([], bill_count=200)
+        stats = run_ingest.ingest_corpus(fs, cutoff="2026-01-01")
+        assert stats["seen"] == 3 and stats["min_seen"] == 100, stats
+        assert "listing may be truncated" in stats["error"]
+        assert fs.runs[-1][1] is False
+
+        fs2 = S([], bill_count=200)
+        stats2 = run_ingest.ingest_corpus(fs2, cutoff="2026-01-01", min_seen=0)
+        assert stats2["min_seen"] == 0 and "error" not in stats2, stats2
+        assert fs2.runs[-1][1] is True
+    finally:
+        riigikogu.iterate_corpus, riigikogu.extract_bill_text, time.sleep = \
+            orig_iter, orig_extract, orig_sleep
+    print("✓ full runs enforce the seen floor; min_seen=0 disables it")
+
+
+def test_ingest_records_text_statuses():
+    orig_iter, orig_extract, orig_sleep = riigikogu.iterate_corpus, riigikogu.extract_bill_text, time.sleep
+    time.sleep = lambda *_: None
+
+    class S(FakeStore):
+        def upsert_bill(self, mark, title, api_data):
+            return f"b{mark}"
+
+        def bill_state(self, mark):
+            return None
+
+        def latest_doc_hash(self, bill_id):
+            return None
+
+        def next_version(self, bill_id):
+            return 1
+
+        def insert_document(self, *a, **kw):
+            return True
+
+    try:
+        riigikogu.iterate_corpus = lambda cutoff, **kw: iter([_draft(1)])
+        riigikogu.extract_bill_text = lambda uuid: riigikogu.Extraction(
+            None, None, "image_only_pdf", "pdf")
+        fs = S([], bill_count=1)
+        stats = run_ingest.ingest_corpus(fs, cutoff="2026-01-01", min_seen=0)
+        assert stats["no_text"] == 1 and stats["failed"] == 0, stats
+        assert fs.text_status["b1"] == ("image_only_pdf", "pdf")
+        assert fs.runs[-1][1] is True
+
+        riigikogu.extract_bill_text = lambda uuid: riigikogu.Extraction(
+            None, None, "download_failed", "docx")
+        fs2 = S([], bill_count=1)
+        stats2 = run_ingest.ingest_corpus(fs2, cutoff="2026-01-01", min_seen=0)
+        assert stats2["failed"] == 1 and fs2.runs[-1][1] is False, stats2
+        assert fs2.text_status["b1"] == ("download_failed", "docx")
+
+        text = "Testseadus\n\n§ 1. Reegel\n" + ("Sisu. " * 50)
+        riigikogu.extract_bill_text = lambda uuid: riigikogu.Extraction(
+            text, "docx", "ok", "doc,docx")
+        fs3 = S([], bill_count=1)
+        stats3 = run_ingest.ingest_corpus(fs3, cutoff="2026-01-01", min_seen=0)
+        assert stats3["new"] == 1 and stats3["text_status_counts"]["ok"] == 1, stats3
+        assert fs3.text_status["b1"] == ("ok", "doc,docx")
+    finally:
+        riigikogu.iterate_corpus, riigikogu.extract_bill_text, time.sleep = \
+            orig_iter, orig_extract, orig_sleep
+    print("✓ ingest records data/no-text, download failure, and success text statuses")
+
+
+def test_ingest_stores_memo_as_second_document():
+    orig_iter, orig_extract, orig_sleep = riigikogu.iterate_corpus, riigikogu.extract_bill_text, time.sleep
+    time.sleep = lambda *_: None
+    text = "Testseadus\n\n§ 1. Reegel\n" + ("Sisu. " * 50)
+    memo = "Seletuskiri\n" + ("Memo. " * 50)
+    riigikogu.iterate_corpus = lambda cutoff, **kw: iter([_draft(1)])
+    riigikogu.extract_bill_text = lambda uuid: riigikogu.Extraction(
+        text, "doc_via_libreoffice", "ok", "doc,pdf", memo=memo)
+
+    class S(FakeStore):
+        def __init__(self):
+            super().__init__([], bill_count=1)
+            self.documents = []
+
+        def upsert_bill(self, mark, title, api_data):
+            return "b1"
+
+        def bill_state(self, mark):
+            return None
+
+        def latest_doc_hash(self, bill_id):
+            return None
+
+        def next_version(self, bill_id):
+            return 7
+
+        def insert_document(self, *a, **kw):
+            self.documents.append((a, kw))
+            return True
+
+    fs = S()
+    try:
+        stats = run_ingest.ingest_corpus(fs, cutoff="2026-01-01", min_seen=0)
+        assert stats["new"] == 1 and len(fs.documents) == 2, stats
+        assert fs.documents[0][0][4] == 7 and fs.documents[0][1].get("document_type") is None
+        assert fs.documents[1][0][4] == 7
+        assert fs.documents[1][1]["document_type"] == "seletuskiri"
+    finally:
+        riigikogu.iterate_corpus, riigikogu.extract_bill_text, time.sleep = \
+            orig_iter, orig_extract, orig_sleep
+    print("✓ appended memo is stored as a separate seletuskiri document at the same version")
+
+
+def test_recheck_bypasses_cheap_skip():
+    orig_iter, orig_extract, orig_sleep = riigikogu.iterate_corpus, riigikogu.extract_bill_text, time.sleep
+    time.sleep = lambda *_: None
+    text = "Testseadus\n\n§ 1. Reegel\n" + ("Sisu. " * 50)
+    calls = []
+    riigikogu.iterate_corpus = lambda cutoff, **kw: iter([_draft(1, date="2026-06-01")])
+
+    def extract(uuid):
+        calls.append(uuid)
+        return riigikogu.Extraction(text, "docx", "ok", "docx")
+
+    riigikogu.extract_bill_text = extract
+
+    class S(FakeStore):
+        def __init__(self):
+            super().__init__([], bill_count=1)
+
+        def bill_state(self, mark):
+            return {"id": "b1", "stage": "2026-06-01", "has_doc": True}
+
+        def upsert_bill(self, mark, title, api_data):
+            return "b1"
+
+        def latest_doc_hash(self, bill_id):
+            return riigikogu.content_hash(text)
+
+    fs = S()
+    try:
+        stats = run_ingest.ingest_corpus(fs, cutoff="2026-01-01", min_seen=0, recheck=["1"])
+        assert calls == ["u1"], calls
+        assert stats["unchanged"] == 1 and fs.text_status["b1"] == ("ok", "docx")
+    finally:
+        riigikogu.iterate_corpus, riigikogu.extract_bill_text, time.sleep = \
+            orig_iter, orig_extract, orig_sleep
+    print("✓ recheck bill numbers bypass the cheap skip and refresh text_status")
+
+
+def test_mains_exit_nonzero_when_not_ok():
+    orig_argv = sys.argv[:]
+    orig_ingest = run_ingest.ingest_corpus
+    orig_pending = analyze_pending.run_pending
+    orig_store = analyze_pending.SupabaseStore
+    try:
+        run_ingest.ingest_corpus = lambda *a, **kw: {"failed": 1}
+        sys.argv = ["run_ingest", "--dry-run"]
+        try:
+            run_ingest.main()
+            raise AssertionError("ingest main must exit 1")
+        except SystemExit as exc:
+            assert exc.code == 1
+
+        analyze_pending.SupabaseStore = lambda: FakeStore([])
+        analyze_pending.run_pending = lambda *a, **kw: {"error": "bad", "failed": 0}
+        sys.argv = ["analyze_pending"]
+        try:
+            analyze_pending.main()
+            raise AssertionError("analyze main must exit 1")
+        except SystemExit as exc:
+            assert exc.code == 1
+    finally:
+        sys.argv = orig_argv
+        run_ingest.ingest_corpus = orig_ingest
+        analyze_pending.run_pending = orig_pending
+        analyze_pending.SupabaseStore = orig_store
+    print("✓ worker mains exit SystemExit(1) when run_ok is false")
+
+
+def test_run_pending_empty_candidates_and_pending_count():
+    fs = FakeStore([], bill_count=5)
+    stats = analyze_pending.run_pending(fs, analyze_fn=lambda text, **kw: None)
+    assert stats["candidates"] == 0 and stats["error"] == "no candidate documents while bills exist"
+    assert fs.runs[-1][1] is False
+
+    empty = FakeStore([], bill_count=0)
+    stats_empty = analyze_pending.run_pending(empty, analyze_fn=lambda text, **kw: None)
+    assert stats_empty["candidates"] == 0 and "error" not in stats_empty
+    assert empty.runs[-1][1] is True
+
+    docs = [{"id": f"d{i}", "bill_id": f"b{i}", "content_hash": f"h{i}"} for i in range(4)]
+    capped = FakeStore(docs, bill_count=4)
+
+    def ok_analyze(text, **kw):
+        return ({"result": {"cache_key": "ck", "llm_cache_key": "lk", "model": "m",
+                            "provider": "p", "prompt_version": "v", "checker_version": "c",
+                            "engine": {}, "config": {}, "findings": []},
+                 "stats": {}, "samples": [], "usage": {"input_tokens": 1, "output_tokens": 1,
+                                                       "cost_usd": 0.0, "duration_ms": 1}}, False)
+
+    stats_cap = analyze_pending.run_pending(capped, analyze_fn=ok_analyze, max_bills=2)
+    assert stats_cap["analysed"] == 2 and stats_cap["pending"] == 2, stats_cap
+    assert capped.runs[-1][1] is True
+    print("✓ run_pending flags empty candidate gaps and reports capped backlog")
+
+
+def test_find_best_document_preference_and_formats():
+    texts = [
+        {"file": {"fileTitle": "Eelnõu tekst", "fileExtension": "pdf",
+                  "_links": {"download": {"href": "pdf-url"}}}},
+        {"file": {"fileTitle": "Algtekst", "fileExtension": "doc",
+                  "_links": {"download": {"href": "doc-url"}}}},
+        {"file": {"fileTitle": "Seletuskiri", "fileExtension": "docx",
+                  "_links": {"download": {"href": "memo-url"}}}},
+        {"file": {"fileTitle": "Eelnõu", "fileExtension": "asice",
+                  "_links": {"download": {"href": "asice-url"}}}},
+    ]
+    ext, url, formats = riigikogu.find_best_document(texts)
+    assert (ext, url) == ("doc", "doc-url")
+    assert formats == ["asice", "doc", "pdf"]
+
+    texts.append({"file": {"fileTitle": "Eelnõu", "fileExtension": "docx",
+                           "_links": {"download": {"href": "docx-url"}}}})
+    ext2, url2, formats2 = riigikogu.find_best_document(texts)
+    assert (ext2, url2) == ("docx", "docx-url")
+    assert formats2 == ["asice", "doc", "docx", "pdf"]
+    print("✓ find_best_document prefers docx/doc/pdf and reports all seen formats")
+
+
+def test_extract_bill_text_status_classification():
+    orig_texts = riigikogu.get_draft_texts
+    orig_doc = riigikogu.extract_doc
+    orig_docx = riigikogu.extract_docx
+    orig_pdf = riigikogu.extract_pdf
+    orig_sleep = time.sleep
+    time.sleep = lambda *_: None
+    try:
+        riigikogu.get_draft_texts = lambda uuid: []
+        ex = riigikogu.extract_bill_text("u")
+        assert ex.status == "no_files" and ex.formats == ""
+
+        riigikogu.get_draft_texts = lambda uuid: [
+            {"file": {"fileTitle": "Eelnõu", "fileExtension": "asice",
+                      "_links": {"download": {"href": "asice-url"}}}}]
+        ex = riigikogu.extract_bill_text("u")
+        assert ex.status == "unsupported_format" and ex.formats == "asice"
+
+        riigikogu.get_draft_texts = lambda uuid: [
+            {"file": {"fileTitle": "Eelnõu", "fileExtension": "doc",
+                      "_links": {"download": {"href": "doc-url"}}}},
+            {"file": {"fileTitle": "Eelnõu", "fileExtension": "pdf",
+                      "_links": {"download": {"href": "pdf-url"}}}},
+        ]
+        riigikogu.extract_doc = lambda url: (_ for _ in ()).throw(
+            riigikogu.DocConvertError("no soffice"))
+        ex = riigikogu.extract_bill_text("u")
+        assert ex.status == "convert_failed" and ex.formats == "doc,pdf"
+
+        riigikogu.get_draft_texts = lambda uuid: [
+            {"file": {"fileTitle": "Eelnõu", "fileExtension": "pdf",
+                      "_links": {"download": {"href": "pdf-url"}}}}]
+        riigikogu.extract_pdf = lambda url: "too short"
+        ex = riigikogu.extract_bill_text("u")
+        assert ex.status == "image_only_pdf" and ex.method == "pdf_text"
+
+        riigikogu.get_draft_texts = lambda uuid: [
+            {"file": {"fileTitle": "Eelnõu", "fileExtension": "docx",
+                      "_links": {"download": {"href": "docx-url"}}}}]
+        riigikogu.extract_docx = lambda url: (_ for _ in ()).throw(
+            riigikogu.RiigikoguUnavailable(url, 503, "HTTP 503"))
+        ex = riigikogu.extract_bill_text("u")
+        assert ex.status == "download_failed" and ex.formats == "docx"
+    finally:
+        riigikogu.get_draft_texts = orig_texts
+        riigikogu.extract_doc = orig_doc
+        riigikogu.extract_docx = orig_docx
+        riigikogu.extract_pdf = orig_pdf
+        time.sleep = orig_sleep
+    print("✓ extract_bill_text classifies no_files/unsupported/convert/pdf/download statuses")
+
+
 if __name__ == "__main__":
     test_fetch_retries_timeouts_and_5xx()
+    test_fetch_exhaustion_and_404()
     test_list_drafts_server_side_se_filter()
     test_iterate_corpus_window_and_stop()
+    test_iterate_empty_page_vs_5xx()
     test_upsert_updates_existing()
     test_next_version_and_doc_listing()
+    test_bill_state_and_count_bills_urls()
     test_insert_analysis_and_new_writers()
+    test_insert_analysis_reads_llm_cache_key_from_config()
     test_run_pending_cap_and_isolation()
     test_degraded_llm_analysis_not_persisted()
     test_ingest_skips_unmoved_bills_without_download()
     test_ingest_corpus_isolation_and_run_record()
+    test_ingest_listing_failure_records_not_ok()
+    test_ingest_seen_floor_and_disable()
+    test_ingest_records_text_statuses()
+    test_ingest_stores_memo_as_second_document()
+    test_recheck_bypasses_cheap_skip()
+    test_mains_exit_nonzero_when_not_ok()
+    test_run_pending_empty_candidates_and_pending_count()
+    test_find_best_document_preference_and_formats()
+    test_extract_bill_text_status_classification()
     print("\nALL INGESTION CONTRACT TESTS PASSED")

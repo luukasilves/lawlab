@@ -9,6 +9,10 @@ on:
         description: 'Prove the failure-notify path'
         type: boolean
         default: false
+      recheck_bills:
+        description: 'Comma-separated list of bill numbers to re-download despite the unchanged-bill skip'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -23,6 +27,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.14'
+      - name: Install LibreOffice for legacy .doc conversion
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libreoffice-writer-nogui || sudo apt-get install -y --no-install-recommends libreoffice-writer
+          soffice --version
       - run: pip install -r requirements.txt
       - name: Force failure for notification test
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.force_fail }}
@@ -33,10 +42,12 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           LAWLAB_CORPUS_SINCE: '2026-01-01'
+          LAWLAB_RECHECK_BILLS: ${{ inputs.recheck_bills }}
         run: python3 -m ingestion.run_ingest --max-pages 20
 
   analyze:
     needs: ingest
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:

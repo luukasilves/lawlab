@@ -205,23 +205,25 @@ def _extract_references(src: str, start: int, end: int, self_law: Optional[str])
 def _quote_mask(s: str) -> List[bool]:
     """Mark chars inside curly-quoted text while preserving one char per input."""
     mask = [False] * len(s)
-    inside = False
-    opener = ""
-    for i, ch in enumerate(s):
-        if ch == "„" and not inside:
-            inside = True
-            opener = ch
-            mask[i] = True
-        elif ch in ("“", "”") and inside and opener == "„":
-            inside = False
-            opener = ""
-            mask[i] = True
-        elif ch == "”":
-            inside = not inside
-            opener = ch if inside else ""
-            mask[i] = True
-        else:
-            mask[i] = inside
+    i = 0
+    while i < len(s):
+        ch = s[i]
+        if ch not in ("„", "”"):
+            i += 1
+            continue
+
+        closer = None
+        for j in range(i + 1, len(s)):
+            if s[j] in ("“", "”"):
+                closer = j
+                break
+        if closer is None:
+            i += 1
+            continue
+
+        for j in range(i, closer + 1):
+            mask[j] = True
+        i = closer + 1
     return mask
 
 

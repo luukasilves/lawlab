@@ -43,6 +43,17 @@ class SupabaseStore:
         rows = r.json()
         return rows[0] if rows else None
 
+    def count_bills(self) -> int:
+        r = requests.get(f"{self.url}/rest/v1/bills?select=id",
+                         headers=self._h(extra={"Prefer": "count=exact", "Range": "0-0"}),
+                         timeout=30)
+        r.raise_for_status()
+        cr = r.headers.get("Content-Range", "")
+        if "/" not in cr:
+            return 0
+        total = cr.rsplit("/", 1)[1]
+        return 0 if total == "*" else int(total)
+
     def latest_doc_hash(self, bill_id: str) -> Optional[str]:
         r = requests.get(f"{self.url}/rest/v1/bill_documents?bill_id=eq.{bill_id}"
                          f"&document_type=eq.eeln%C3%B5u&select=content_hash,version"
@@ -55,7 +66,8 @@ class SupabaseStore:
         """Cheap change-detection state: stored activeDraftStatusDate + doc presence."""
         r = requests.get(
             f"{self.url}/rest/v1/bills?bill_number=eq.{mark}"
-            f"&select=id,stage:api_data->>activeDraftStatusDate,bill_documents(id)",
+            f"&select=id,stage:api_data->>activeDraftStatusDate,bill_documents(id)"
+            f"&bill_documents.document_type=eq.eeln%C3%B5u",
             headers=self._h(), timeout=30)
         r.raise_for_status()
         rows = r.json()
@@ -83,9 +95,18 @@ class SupabaseStore:
         r.raise_for_status()
         return r.json()[0]["id"]
 
+    def set_text_status(self, bill_id: str, status: str, formats: str) -> None:
+        payload = {"text_status": status, "text_formats": formats,
+                   "text_checked_at": _now_iso()}
+        r = requests.patch(f"{self.url}/rest/v1/bills?id=eq.{_flt(bill_id)}",
+                           headers=self._h(write=True, extra={"Prefer": "return=minimal"}),
+                           json=payload, timeout=30)
+        r.raise_for_status()
+
     def insert_document(self, bill_id: str, text: str, method: str,
-                        content_hash: str, version: int) -> bool:
-        payload = {"bill_id": bill_id, "document_type": "eelnõu", "parsed_text": text,
+                        content_hash: str, version: int,
+                        document_type: str = "eelnõu") -> bool:
+        payload = {"bill_id": bill_id, "document_type": document_type, "parsed_text": text,
                    "text_length": len(text), "extraction_method": method,
                    "content_hash": content_hash, "version": version}
         r = requests.post(f"{self.url}/rest/v1/bill_documents",
@@ -93,8 +114,9 @@ class SupabaseStore:
                           json=payload, timeout=30)
         return r.status_code in (200, 201, 204)
 
-    def next_version(self, bill_id: str) -> int:
+    def next_version(self, bill_id: str, document_type: str = "eelnõu") -> int:
         r = requests.get(f"{self.url}/rest/v1/bill_documents?bill_id=eq.{_flt(bill_id)}"
+                         f"&document_type=eq.{_flt(document_type)}"
                          f"&select=version&order=version.desc,fetched_at.desc&limit=1",
                          headers=self._h(), timeout=30)
         r.raise_for_status()
@@ -139,6 +161,9 @@ class SupabaseStore:
         for key in ("cache_key", "llm_cache_key", "model", "provider", "prompt_version",
                     "checker_version", "engine", "config", "stats"):
             payload[key] = result.get(key)
+        payload["llm_cache_key"] = (
+            result.get("llm_cache_key") or (result.get("config") or {}).get("llm_cache_key")
+        )
         for key in ("duration_ms", "input_tokens", "output_tokens", "cost_usd"):
             payload[key] = result.get(key, usage.get(key))
         r = requests.post(f"{self.url}/rest/v1/analyses", headers=self._h(write=True,
@@ -186,7 +211,8 @@ class SupabaseStore:
         while True:
             end = start + page_size - 1
             r = requests.get(f"{self.url}/rest/v1/bill_documents?document_type=eq.eeln%C3%B5u"
-                             f"&select=id,bill_id,content_hash",
+                             f"&select=id,bill_id,content_hash"
+                             f"&order=fetched_at.desc,id.asc",
                              headers=self._h(extra={"Range": f"{start}-{end}"}),
                              timeout=60)
             r.raise_for_status()

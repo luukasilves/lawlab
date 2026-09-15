@@ -6,8 +6,8 @@ import {
   fetchSampleRaw,
   fetchSamplesMeta,
   postFeedback
-} from "api.js";
-import { t as translate, withLang, stripLang, getLang } from "i18n.js";
+} from "./api.js";
+import { t as translate, withLang, stripLang, getLang } from "./i18n.js";
 
 const SEVERITY_RANK = { HIGH: 3, MEDIUM: 2, LOW: 1 };
 const SEVERITIES = new Set(["HIGH", "MEDIUM", "LOW"]);
@@ -46,6 +46,7 @@ const FALLBACKS = {
   reasoning: "Põhjendus",
   refuted: "ümber lükatud",
   refuted_section: "Ümber lükatud leiud",
+  recheck_note: "Eelnõu on Riigikogus pärast teksti viimast kontrolli edasi liikunud. Uus tekstikontroll ja analüüs on ootel.",
   results: "Tulemused",
   returned: "tagastatud",
   sample_reused: "taaskasutatud",
@@ -64,6 +65,16 @@ const FALLBACKS = {
   summary_chars: "märki",
   summary_documents: "Dokumendid",
   summary_prompt: "Prompt",
+  state_no_text: "Eelnõu tekst ei ole analüüsitav",
+  not_analyzed: "Veel analüüsimata",
+  not_analyzed_note: "Eelnõu tekst on olemas, kuid selle analüüs ei ole veel valminud.",
+  no_text: "Eelnõu teksti ei õnnestunud kätte saada.",
+  text_status_convert_failed: "Eelnõu teksti teisendamine ebaõnnestus.",
+  text_status_download_failed: "Eelnõu teksti allalaadimine ebaõnnestus.",
+  text_status_empty_text: "Failist ei leitud loetavat teksti.",
+  text_status_image_only_pdf: "PDF sisaldab ainult skaneeritud pilte.",
+  text_status_no_files: "Eelnõu tekstifaile ei leitud.",
+  text_status_unsupported_format: "Eelnõu on vormingus, mida süsteem ei toeta.",
   threshold: "künnis",
   tokens: "Tokenid",
   totals_step: "Kokkuvõte",
@@ -267,7 +278,8 @@ function normalizeParsedText(parsedText) {
 }
 
 function billDocuments(bill) {
-  return bill?.bill_documents || bill?.documents || [];
+  const docs = bill?.bill_documents || bill?.documents || [];
+  return Array.isArray(docs) ? docs : [];
 }
 
 function documentVersion(documentRow) {
@@ -278,23 +290,95 @@ function documentId(documentRow) {
   return documentRow?.id || documentRow?.document_id || "";
 }
 
+function isBillTextDocument(documentRow) {
+  return documentRow?.document_type === "eelnõu";
+}
+
+function billTextDocuments(bill) {
+  return billDocuments(bill).filter(isBillTextDocument);
+}
+
+function compareDocumentVersions(a, b) {
+  const aVersion = documentVersion(a);
+  const bVersion = documentVersion(b);
+  const aNumber = Number(aVersion);
+  const bNumber = Number(bVersion);
+  if (Number.isFinite(aNumber) && Number.isFinite(bNumber) && aNumber !== bNumber) {
+    return aNumber - bNumber;
+  }
+  return String(aVersion).localeCompare(String(bVersion), "et", { numeric: true });
+}
+
+function compareFetchedAt(a, b) {
+  const aTime = new Date(a?.fetched_at || 0).getTime();
+  const bTime = new Date(b?.fetched_at || 0).getTime();
+  if (!Number.isNaN(aTime) && !Number.isNaN(bTime) && aTime !== bTime) {
+    return aTime - bTime;
+  }
+  return String(a?.fetched_at || "").localeCompare(String(b?.fetched_at || ""));
+}
+
+export function latestDocument(bill) {
+  return billTextDocuments(bill).slice().sort((a, b) => {
+    const versionDiff = compareDocumentVersions(b, a);
+    return versionDiff || compareFetchedAt(b, a);
+  })[0] || null;
+}
+
+function dayPart(value) {
+  if (!value) {
+    return "";
+  }
+  const textValue = String(value);
+  return /^\d{4}-\d{2}-\d{2}/.test(textValue) ? textValue.slice(0, 10) : "";
+}
+
+export function billStateFor(bill, analysisId) {
+  const doc = latestDocument(bill);
+  if (!doc) {
+    return "no_text";
+  }
+  if (!analysisId) {
+    return "pending_analysis";
+  }
+  const activeDay = dayPart(bill?.api_data?.activeDraftStatusDate);
+  const checkedDay = dayPart(bill?.text_checked_at || doc.fetched_at);
+  if (activeDay && checkedDay && activeDay > checkedDay) {
+    return "recheck_pending";
+  }
+  return "analysed";
+}
+
+function sameDocument(a, b) {
+  if (!a || !b) {
+    return false;
+  }
+  const aId = documentId(a);
+  const bId = documentId(b);
+  if (aId && bId) {
+    return String(aId) === String(bId);
+  }
+  return String(documentVersion(a)) === String(documentVersion(b))
+    && String(a.fetched_at || "") === String(b.fetched_at || "");
+}
+
 function findAnalysedDocument(bill, analysis, historyRow) {
-  const docs = billDocuments(bill);
+  const docs = billTextDocuments(bill);
   const wantedVersion = historyRow?.doc_version || analysis?.doc_version || "";
   const wantedDocumentId = analysis?.document_id || historyRow?.document_id || "";
   if (wantedDocumentId) {
-    const byDocumentId = docs.find((doc) => documentId(doc) === wantedDocumentId);
+    const byDocumentId = docs.find((doc) => String(documentId(doc)) === String(wantedDocumentId));
     if (byDocumentId) {
       return byDocumentId;
     }
   }
   if (wantedVersion) {
-    const byVersion = docs.find((doc) => documentVersion(doc) === wantedVersion);
+    const byVersion = docs.find((doc) => String(documentVersion(doc)) === String(wantedVersion));
     if (byVersion) {
       return byVersion;
     }
   }
-  return docs[0] || null;
+  return latestDocument(bill);
 }
 
 function sortedHistory(history) {
@@ -371,10 +455,11 @@ function renderMetaGrid() {
   const grid = byId("metaGrid");
   clear(grid);
   const apiData = state.bill?.api_data || {};
+  const updatedAt = state.document?.fetched_at || state.bill?.text_checked_at || state.bill?.last_seen_at || "";
   const cards = [
     [tr("meta_type"), apiData.draftTypeCode || "-"],
     [tr("meta_committee"), apiData.leadingCommittee?.name || "-"],
-    [tr("meta_updated"), formatDate(state.document?.fetched_at)],
+    [tr("meta_updated"), formatDate(updatedAt)],
     [tr("meta_prompt"), promptVersionLabel()]
   ];
   for (const [label, value] of cards) {
@@ -389,15 +474,27 @@ function renderAnalysis() {
   const allFindings = getFindings();
   const visibleFindings = sortFindings(allFindings.filter((finding) => !isRefuted(finding)));
   const refutedFindings = sortFindings(allFindings.filter(isRefuted));
+  const pageState = billStateFor(state.bill, getAnalysisId());
 
   byId("resultsTitle").textContent = tr("results");
-  byId("resultsCount").textContent = String(visibleFindings.length);
+  byId("resultsCount").textContent = pageState === "no_text" || pageState === "pending_analysis"
+    ? ""
+    : String(visibleFindings.length);
 
-  renderAnalysisSummary();
-  renderDocumentHighlights(state.parsedText, visibleFindings);
-  renderFindingsList(visibleFindings);
-  renderRefutedSection(refutedFindings);
-  renderPipeline();
+  renderBillStateNote(pageState);
+  renderAnalysisSummary(pageState);
+  if (pageState === "no_text") {
+    renderDocumentStatePanel(pageState);
+  } else {
+    renderDocumentHighlights(state.parsedText, visibleFindings);
+  }
+  renderFindingsList(visibleFindings, pageState);
+  renderRefutedSection(pageState === "no_text" || pageState === "pending_analysis" ? [] : refutedFindings);
+  if (pageState === "no_text" || pageState === "pending_analysis") {
+    clear(byId("pipelinePanel"));
+  } else {
+    renderPipeline();
+  }
   renderHistory();
   renderRawJsonPanel();
   renderMetaGrid();
@@ -405,9 +502,13 @@ function renderAnalysis() {
 
 // Old-site summary line under the results header:
 // "Analüüsitud: 80 474 märki · Dokumendid: eelnõu · Prompt: ic-v1"
-function renderAnalysisSummary() {
+function renderAnalysisSummary(pageState) {
   const host = byId("analysisSummary");
   if (!host) {
+    return;
+  }
+  if (pageState === "no_text" || pageState === "pending_analysis") {
+    host.textContent = "";
     return;
   }
   const chars = Number(state.document?.text_length ?? state.parsedText.length ?? 0);
@@ -419,6 +520,57 @@ function renderAnalysisSummary() {
     `${tr("summary_documents")}: ${docType}`,
     `${tr("summary_prompt")}: ${version}`
   ].join(" · ");
+}
+
+function textFormatsLabel(formats) {
+  if (Array.isArray(formats)) {
+    return formats.filter(Boolean).join(",");
+  }
+  return formats == null ? "" : String(formats).trim();
+}
+
+function textStatusReason(bill) {
+  const status = String(bill?.text_status || "").trim();
+  const generic = tr("no_text");
+  const reason = status ? tr(`text_status_${status}`, generic) : generic;
+  const formats = textFormatsLabel(bill?.text_formats);
+  return formats ? `${reason} (${formats})` : reason;
+}
+
+function statePanelFor(pageState) {
+  const panel = div("state-panel");
+  const label = document.createElement("strong");
+  const body = div("state-panel-body");
+  if (pageState === "pending_analysis") {
+    label.textContent = tr("not_analyzed");
+    body.textContent = tr("not_analyzed_note");
+  } else {
+    label.textContent = tr("state_no_text");
+    body.textContent = textStatusReason(state.bill);
+  }
+  panel.append(label, body);
+  return panel;
+}
+
+function renderDocumentStatePanel(pageState) {
+  const container = byId("docText");
+  clear(container);
+  container.appendChild(statePanelFor(pageState));
+}
+
+function renderBillStateNote(pageState) {
+  const host = byId("billState");
+  if (!host) {
+    return;
+  }
+  let message = "";
+  if (pageState === "recheck_pending") {
+    message = tr("recheck_note");
+  } else if (pageState === "analysed" && getAnalysisId() && !sameDocument(latestDocument(state.bill), state.document)) {
+    message = tr("not_analyzed_note");
+  }
+  host.textContent = message;
+  host.hidden = !message;
 }
 
 function renderDocumentHighlights(parsedText, visibleFindings) {
@@ -494,9 +646,13 @@ function renderDocumentHighlights(parsedText, visibleFindings) {
   }
 }
 
-function renderFindingsList(findings) {
+function renderFindingsList(findings, pageState) {
   const list = byId("findingsList");
   clear(list);
+  if (pageState === "no_text" || pageState === "pending_analysis") {
+    list.appendChild(statePanelFor(pageState));
+    return;
+  }
   if (!findings.length) {
     const empty = div("empty-panel");
     empty.textContent = tr("zero_findings");
@@ -1109,7 +1265,9 @@ async function init(data) {
   const history = sortedHistory(data.history || []);
   const analysis = data.analysis || null;
   const currentHistory = currentHistoryFor(history, analysis);
-  const documentRow = data.document || findAnalysedDocument(data.bill, analysis, currentHistory);
+  const documentRow = isBillTextDocument(data.document)
+    ? data.document
+    : findAnalysedDocument(data.bill, analysis, currentHistory);
   state = {
     analysis,
     bill: data.bill || {},
@@ -1126,7 +1284,7 @@ async function init(data) {
   return state;
 }
 
-function resolveBillId(locationLike = window.location) {
+function resolveBillId(locationLike = globalThis.window?.location || {}) {
   const params = new URLSearchParams(locationLike.search || "");
   const queryId = params.get("id");
   if (queryId) {
@@ -1146,7 +1304,7 @@ async function autoInit() {
     const history = sortedHistory(await fetchHistory(billId));
     const currentHistory = history[0] || null;
     const analysisId = getHistoryAnalysisId(currentHistory);
-    const analysis = analysisId ? await fetchAnalysisWithFindings(analysisId) : { findings: [] };
+    const analysis = analysisId ? await fetchAnalysisWithFindings(analysisId) : null;
     const doc = findAnalysedDocument(bill, analysis, currentHistory);
     const parsedText = doc && documentId(doc) ? await fetchParsedText(documentId(doc)) : { parsed_text: "" };
     const samplesMeta = analysisId ? await fetchSamplesMeta(analysisId).catch(() => []) : [];
@@ -1163,14 +1321,16 @@ async function autoInit() {
   }
 }
 
-bindDocumentClicks();
+if (typeof window !== "undefined") {
+  window.LawlabBill = {
+    init,
+    latestDocument,
+    billStateFor,
+    resolveBillId
+  };
+}
 
-window.LawlabBill = {
-  init,
-  resolveBillId
-};
-
-if (!window.__LAWLAB_TEST__) {
+if (typeof window !== "undefined" && typeof document !== "undefined" && !window.__LAWLAB_TEST__) {
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", autoInit, { once: true });
   } else {

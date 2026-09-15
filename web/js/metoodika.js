@@ -15,9 +15,9 @@ const TEXT = {
     riigikoguApiTitle: "Riigikogu API",
     riigikoguApiBody: "Eelnõude nimekiri ja metaandmed loetakse Riigikogu avalikust API-st:",
     documentsTitle: "Dokumendid",
-    documentsBody: "Analüüsitakse eelnõu põhiteksti DOCX-failist. NB! Seletuskirja veel ei analüüsita.",
+    documentsBody: "Analüüsitakse eelnõu põhiteksti DOCX- või DOC-failist. NB! Seletuskirja ei analüüsita.",
     refreshTitle: "Andmete uuendamine",
-    refreshBody: "Andmed uuenevad automaatselt iga päev kell 05:00 UTC. Värskuse ajatempel pärineb pipeline_runs tabeli viimasest õnnestunud laadimisest.",
+    refreshBody: "Andmed uuenevad automaatselt iga päev kell 05:00 UTC. Värskuse ajatempel pärineb pipeline_runs tabeli viimasest õnnestunud laadimisest. Iga lehe jalus näitab viimase kontrolli aega ja tulemust.",
     aiModel: "AI mudel",
     samplingLine: (s) => `Valim: ${s.samples ?? "?"} sõltumatut analüüsi, avaldamise künnis ${s.min_agreement ?? "?"}/${s.samples ?? "?"}, temperatuur ${s.temperature ?? "?"}.`,
     textLimitTitle: "Teksti piirang",
@@ -87,9 +87,9 @@ const TEXT = {
     riigikoguApiTitle: "Riigikogu API",
     riigikoguApiBody: "The bill list and metadata are read from the public Riigikogu API:",
     documentsTitle: "Documents",
-    documentsBody: "The main bill text is analysed from the DOCX file. Note: the explanatory memorandum is not analysed yet.",
+    documentsBody: "The main bill text is analysed from the DOCX or DOC file. Note: the explanatory memorandum is not analysed.",
     refreshTitle: "Data refresh",
-    refreshBody: "Data refreshes automatically every day at 05:00 UTC. The freshness timestamp comes from the last successful run in the pipeline_runs table.",
+    refreshBody: "Data refreshes automatically every day at 05:00 UTC. The freshness timestamp comes from the last successful run in the pipeline_runs table. The footer of every page shows the time and outcome of the last check.",
     aiModel: "AI model",
     samplingLine: (s) => `Sampling: ${s.samples ?? "?"} independent analyses, publication threshold ${s.min_agreement ?? "?"}/${s.samples ?? "?"}, temperature ${s.temperature ?? "?"}.`,
     textLimitTitle: "Text limit",
@@ -159,7 +159,7 @@ const moduleReady = Promise.allSettled([
       // The real shell self-initializes on DOMContentLoaded, but this dynamic
       // import can resolve after that event has already fired — render directly.
       mod.renderHeader(document.body?.dataset.active || "method");
-      if (typeof mod.renderFooter === "function") mod.renderFooter(null);
+      if (typeof mod.renderFooter === "function") mod.renderFooter();
     }
   })
 ]);

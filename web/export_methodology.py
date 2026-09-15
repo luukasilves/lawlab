@@ -52,7 +52,7 @@ STORY_EN = [
 LIMITATIONS_ET = [
     "Muutmisseaduste puhul analüüsitakse ainult eelnõu enda teksti ehk muudatusettepanekute sõnastust. Süsteem ei koosta muudetava seaduse tulevast tervikteksti ega võrdle eelnõud Riigi Teataja kehtiva redaktsiooniga — vead, mis ilmnevad alles muudatuse ja kehtiva seaduse koosmõjus, jäävad märkamata. (Täiesti uue seaduse eelnõu puhul on analüüsitav tekst ühtlasi kogu tulevane seadus.)",
     "Analüüsitakse ainult eelnõu põhiteksti — seletuskirja ei kaasata.",
-    "Vanas .doc-vormingus ja pildipõhiseid PDF-e ei suudeta lugeda (tekst puudub).",
+    "Pildipõhiseid ehk skaneeritud PDF-e ei saa lugeda, sest neis ei ole eraldatavat teksti; sellised eelnõud märgitakse nimekirjas vastava staatusega. Vanas .doc-vormingus failid teisendatakse enne lugemist.",
     "Deterministlikud kontrollid katavad mehaanilisi vigu; sisulisi hinnanguid annab keelemudel, mille leiud on tõenäosuslikud: mudel võib näha probleemi seal, kus seda tegelikult ei ole, ja jätta mõne vea märkamata. Avaldamiskünnis ja skeptikusamm vähendavad neid riske, kuid kumbagi ei kõrvalda täielikult.",
     "Korpus: seaduseelnõud (SE), mille menetluses on toimunud muudatusi alates 1. jaanuarist 2026.",
 ]
@@ -65,7 +65,7 @@ LIMITATIONS_EN = [
     "and the current law go unnoticed. (For a bill proposing an entirely new act, the "
     "analysed text is the whole future act.)",
     "Only the main text of the bill is analysed — explanatory memoranda are not analysed.",
-    "Old .doc files and image-based PDFs cannot be read because they do not contain extractable text.",
+    "Image-only scanned PDFs cannot be read because they contain no extractable text; such bills are marked with that status in the list. Legacy .doc files are converted before reading.",
     "Deterministic checks cover mechanical errors; substantive assessments are made by a "
     "language model and its findings are probabilistic: the model can see a problem where "
     "there is none and miss a real one. The publication threshold and the skeptic pass "

@@ -10,6 +10,7 @@
   <div id="app-header"></div>
   <main class="container">
     <h1>Shell Test</h1>
+    <div id="test-result">RUNNING</div>
     <div id="results"></div>
   </main>
   <div id="app-footer"></div>
@@ -17,8 +18,15 @@
   <script>
     window.__LAWLAB_TEST__ = true;
     window.__fetchCalls = [];
+    window.__pipelineRows = [];
     window.fetch = async function(url, options) {
       window.__fetchCalls.push({ url: String(url), options: options || {} });
+      if (String(url).includes('/rest/v1/pipeline_runs')) {
+        return new Response(JSON.stringify(window.__pipelineRows), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
       return new Response('[]', {
         status: 201,
         headers: { 'Content-Type': 'application/json' }
@@ -28,7 +36,7 @@
   <script src="../config.js"></script>
   <script type="module">
     import { t, setLang, withLang, stripLang, langFromPath } from '../js/i18n.js';
-    import { renderHeader, renderFooter } from '../js/shell.js';
+    import { renderHeader, renderFooter, summarizeRuns } from '../js/shell.js';
     import { postFeedback } from '../js/api.js';
 
     const results = document.querySelector('#results');
@@ -47,10 +55,62 @@
       results.appendChild(row);
     }
 
+    const hour = 60 * 60 * 1000;
+    const FIXED_NOW = Date.parse('2026-07-12T12:00:00Z');
+
+    function isoAgo(now, hours) {
+      return new Date(now - hours * hour).toISOString();
+    }
+
+    function run(kind, now, hoursAgo, ok, stats = {}) {
+      const finished = isoAgo(now, hoursAgo);
+      return { kind, started_at: finished, finished_at: finished, ok, stats };
+    }
+
+    function healthyRows(now = Date.now()) {
+      return [
+        run('ingest', now, 1, true, { seen: 42, bills_total: 50, new: 3, changed: 4 }),
+        run('analyze', now, 2, true, { analysed: 5, pending: 2 })
+      ];
+    }
+
+    function staleRows(now = Date.now()) {
+      return [
+        run('ingest', now, 49, true, { seen: 42, bills_total: 50, new: 3, changed: 4 }),
+        run('analyze', now, 2, true, { analysed: 5 })
+      ];
+    }
+
+    function failedRows(now = Date.now(), error = 'API <katki>') {
+      return [
+        run('ingest', now, 1, false, { error }),
+        run('ingest', now, 3, true, { seen: 42, bills_total: 50, new: 3, changed: 4 }),
+        run('analyze', now, 2, true, { analysed: 5 })
+      ];
+    }
+
+    function suspectRows(now = Date.now()) {
+      return [
+        run('ingest', now, 1, true, { seen: 0, bills_total: 50, new: 0, changed: 0 }),
+        run('ingest', now, 3, true, { seen: 42, bills_total: 50, new: 3, changed: 4 }),
+        run('analyze', now, 2, true, { analysed: 5 })
+      ];
+    }
+
+    async function renderFooterWith(rows) {
+      window.__pipelineRows = rows;
+      document.querySelector('#app-footer').innerHTML = '';
+      const firstNewCall = window.__fetchCalls.length;
+      const summary = await renderFooter();
+      const status = document.querySelector('[data-pipeline-status]');
+      const fetchCall = window.__fetchCalls.slice(firstNewCall).find((call) => call.url.includes('/rest/v1/pipeline_runs'));
+      return { summary, status, fetchCall };
+    }
+
     try {
       setLang('et');
       renderHeader('bills');
-      renderFooter('2026-07-12T10:00:00Z');
+      await renderFooterWith(healthyRows());
       assert('header-renders', document.querySelector('.wordmark')?.textContent === 'Apsakaleidja', 'wordmark missing');
       assert(
         'tagline-parity',
@@ -123,6 +183,103 @@
     }
 
     try {
+      const ok = summarizeRuns(healthyRows(FIXED_NOW), FIXED_NOW);
+      const stale = summarizeRuns(staleRows(FIXED_NOW), FIXED_NOW);
+      const failedSummary = summarizeRuns(failedRows(FIXED_NOW), FIXED_NOW);
+      const suspect = summarizeRuns(suspectRows(FIXED_NOW), FIXED_NOW);
+      const unknown = summarizeRuns([], FIXED_NOW);
+      assert(
+        'summarize-runs-states',
+        ok.state === 'ok' &&
+          stale.state === 'stale' &&
+          failedSummary.state === 'failed' &&
+          failedSummary.lastGoodIngest?.stats?.seen === 42 &&
+          suspect.state === 'failed' &&
+          suspect.problem?.error === t('status_suspect') &&
+          unknown.state === 'unknown',
+        `${ok.state}|${stale.state}|${failedSummary.state}|${suspect.state}|${unknown.state}`
+      );
+    } catch (error) {
+      assert('summarize-runs-states', false, error.message);
+    }
+
+    try {
+      setLang('et');
+      const { status, fetchCall } = await renderFooterWith(healthyRows());
+      const text = status?.textContent || '';
+      assert(
+        'pipeline-request',
+        fetchCall?.url.includes('/rest/v1/pipeline_runs') &&
+          fetchCall.url.includes('select=kind,started_at,finished_at,ok,stats') &&
+          fetchCall.url.includes('limit=20') &&
+          !fetchCall.url.includes('ok=') &&
+          !fetchCall.url.includes('kind=eq'),
+        `got ${fetchCall?.url}`
+      );
+      assert(
+        'pipeline-render-ok',
+        status?.dataset.state === 'ok' &&
+          text.includes(`42 ${t('status_bills_checked')}`) &&
+          text.includes(`3 ${t('status_new')}`) &&
+          text.includes(`4 ${t('status_changed')}`) &&
+          !status.querySelector('.banner-stale'),
+        `state=${status?.dataset.state} text=${text}`
+      );
+    } catch (error) {
+      assert('pipeline-render-ok', false, error.message);
+    }
+
+    try {
+      const { status } = await renderFooterWith(staleRows());
+      assert(
+        'pipeline-render-stale',
+        status?.dataset.state === 'stale' &&
+          status.querySelector('.banner-stale')?.textContent.includes(t('fresh_stale')),
+        `state=${status?.dataset.state} text=${status?.textContent}`
+      );
+    } catch (error) {
+      assert('pipeline-render-stale', false, error.message);
+    }
+
+    try {
+      const { status } = await renderFooterWith(failedRows(Date.now(), 'API <span data-injected="x">katki</span>'));
+      assert(
+        'pipeline-render-failed',
+        status?.dataset.state === 'failed' &&
+          status.textContent.includes(`42 ${t('status_bills_checked')}`) &&
+          status.querySelector('.banner-stale')?.textContent.includes('API <span data-injected="x">katki</span>') &&
+          status.querySelector('[data-injected]') == null,
+        `state=${status?.dataset.state} text=${status?.textContent}`
+      );
+    } catch (error) {
+      assert('pipeline-render-failed', false, error.message);
+    }
+
+    try {
+      const { status } = await renderFooterWith(suspectRows());
+      assert(
+        'pipeline-render-suspect-zero-seen',
+        status?.dataset.state === 'failed' &&
+          status.querySelector('.banner-stale')?.textContent.includes(t('status_suspect')),
+        `state=${status?.dataset.state} text=${status?.textContent}`
+      );
+    } catch (error) {
+      assert('pipeline-render-suspect-zero-seen', false, error.message);
+    }
+
+    try {
+      const { status } = await renderFooterWith([]);
+      assert(
+        'pipeline-render-unknown',
+        status?.dataset.state === 'unknown' &&
+          status.querySelector('.banner-stale')?.textContent.includes(t('status_unknown')),
+        `state=${status?.dataset.state} text=${status?.textContent}`
+      );
+    } catch (error) {
+      assert('pipeline-render-unknown', false, error.message);
+    }
+
+    try {
       await postFeedback('f-1', 'confirm');
       const call = window.__fetchCalls.at(-1);
       const body = JSON.parse(call.options.body);
@@ -137,12 +294,9 @@
       assert('feedback-post', false, error.message);
     }
 
-    if (!failed) {
-      const marker = document.createElement('div');
-      marker.id = 'test-result';
-      marker.textContent = 'ALL-PASS';
-      results.appendChild(marker);
-    }
+    const marker = document.querySelector('#test-result');
+    marker.className = failed ? 'fail' : 'pass';
+    marker.textContent = failed ? 'FAIL' : 'ALL-PASS';
   </script>
 </body>
 </html>
